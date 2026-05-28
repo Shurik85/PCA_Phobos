@@ -4,62 +4,164 @@
 #  Deploys WG + obfuscator + mini-API (no web panel)
 #
 #  Usage:
-#    MAIN_SERVER=144.124.252.104 MAIN_API_KEY=secret123 \
+#    MAIN_SERVER=212.118.52.193 MAIN_API_KEY=secret123 \
 #    bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)
+#
+#  Uninstall:
+#    bash /opt/Phobos/server/phobos-secondary-uninstall.sh
 # ============================================================
 
 set -e
 
 MAIN_SERVER="${MAIN_SERVER:?Set MAIN_SERVER=ip_of_main_server}"
 MAIN_API_KEY="${MAIN_API_KEY:?Set MAIN_API_KEY=your_api_key}"
-OBF_PORTS="${OBF_PORTS:-51821,51822,51823}"
+OBF_PORTS="${OBF_PORTS:-2083,5443,993}"
 PHOBOS_DIR="/opt/Phobos"
 
 SERVER_IP=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
 IFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="dev") print $(i+1)}' | head -1)
 IFACE="${IFACE:-eth0}"
 
+# ── Pre-flight safety checks ──
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║    Phobos Secondary Server Setup                     ║"
+echo "║    Phobos Secondary Server — Pre-flight Check        ║"
 echo "╠══════════════════════════════════════════════════════╣"
 echo "║  Server IP   : $SERVER_IP"
+echo "║  Interface   : $IFACE"
 echo "║  Main server : $MAIN_SERVER"
 echo "║  OBF ports   : $OBF_PORTS"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
+WARNINGS=0
+
+# Check existing WireGuard
+if [ -f /etc/wireguard/wg0.conf ]; then
+    echo "⚠  EXISTING wg0.conf found at /etc/wireguard/wg0.conf"
+    echo "   Current peers: $(grep -c '^\[Peer\]' /etc/wireguard/wg0.conf 2>/dev/null || echo 0)"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+if systemctl is-active --quiet wg-quick@wg0 2>/dev/null; then
+    echo "⚠  WireGuard wg0 is RUNNING"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check existing Phobos installation
+if [ -d "$PHOBOS_DIR/clients" ] && [ "$(ls -A $PHOBOS_DIR/clients 2>/dev/null)" ]; then
+    CLIENT_COUNT=$(ls -d $PHOBOS_DIR/clients/*/ 2>/dev/null | wc -l)
+    echo "⚠  EXISTING Phobos client data: $CLIENT_COUNT client(s) in $PHOBOS_DIR/clients/"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+if [ -f "$PHOBOS_DIR/server/server.env" ]; then
+    echo "⚠  EXISTING server.env found (previous Phobos installation)"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+if [ -f "$PHOBOS_DIR/tokens/tokens.json" ] && [ "$(cat $PHOBOS_DIR/tokens/tokens.json 2>/dev/null)" != "[]" ]; then
+    echo "⚠  EXISTING tokens.json with active tokens"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check port conflicts
+IFS=',' read -ra PORTS <<< "$OBF_PORTS"
+for PORT in "${PORTS[@]}"; do
+    if ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
+        PROC=$(ss -tlnp 2>/dev/null | grep ":${PORT} " | awk '{print $NF}')
+        echo "⚠  PORT $PORT already in use by: $PROC"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+done
+
+if ss -tlnp 2>/dev/null | grep -q ":51820 "; then
+    echo "⚠  PORT 51820 (WireGuard) already in use"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+if ss -tlnp 2>/dev/null | grep -q ":8444 "; then
+    echo "⚠  PORT 8444 (mini-API) already in use"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
+# Check conflicting services
+for SVC in wg-obfuscator phobos-api; do
+    if systemctl is-active --quiet "$SVC" 2>/dev/null; then
+        echo "⚠  Service $SVC is already running"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+done
+
+for PORT in "${PORTS[@]}"; do
+    if systemctl is-active --quiet "wg-obfuscator-${PORT}" 2>/dev/null; then
+        echo "⚠  Service wg-obfuscator-${PORT} is already running"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+done
+
+if [ "$WARNINGS" -gt 0 ]; then
+    echo ""
+    echo "Found $WARNINGS warning(s). Existing configs will be preserved where possible."
+    echo "Press Enter to continue or Ctrl+C to abort..."
+    read -r < /dev/tty 2>/dev/null || true
+fi
+
+echo ""
+echo "Starting installation..."
+
+# ── 1. Backup existing configs ──
+BACKUP_DIR="$PHOBOS_DIR/backup/$(date +%Y%m%d_%H%M%S)"
+BACKED_UP=0
+if [ -f /etc/wireguard/wg0.conf ] || [ -f "$PHOBOS_DIR/server/server.env" ] || [ -f "$PHOBOS_DIR/tokens/tokens.json" ]; then
+    echo "[0/7] Backing up existing configs..."
+    mkdir -p "$BACKUP_DIR"
+    [ -f /etc/wireguard/wg0.conf ] && cp /etc/wireguard/wg0.conf "$BACKUP_DIR/" && BACKED_UP=$((BACKED_UP + 1))
+    [ -f "$PHOBOS_DIR/server/server.env" ] && cp "$PHOBOS_DIR/server/server.env" "$BACKUP_DIR/" && BACKED_UP=$((BACKED_UP + 1))
+    [ -f "$PHOBOS_DIR/tokens/tokens.json" ] && cp "$PHOBOS_DIR/tokens/tokens.json" "$BACKUP_DIR/" && BACKED_UP=$((BACKED_UP + 1))
+    [ -d "$PHOBOS_DIR/clients" ] && cp -r "$PHOBOS_DIR/clients" "$BACKUP_DIR/" 2>/dev/null && BACKED_UP=$((BACKED_UP + 1))
+    echo "   Backed up $BACKED_UP item(s) to $BACKUP_DIR"
+fi
+
 # ── 1. Dependencies ──
-echo "[1/6] Installing dependencies..."
+echo "[1/7] Installing dependencies..."
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wireguard jq curl python3 python3-flask gunicorn
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wireguard jq curl python3 python3-flask gunicorn 2>/dev/null
 
 # ── 2. Phobos binaries ──
-echo "[2/6] Getting Phobos binaries..."
+echo "[2/7] Getting Phobos binaries..."
 mkdir -p "$PHOBOS_DIR"/{server,clients,bin}
 
-# Clone obfuscator binary from main Phobos repo
-REPO_DIR="/tmp/phobos-repo"
-rm -rf "$REPO_DIR"
-mkdir -p "$REPO_DIR"
-cd "$REPO_DIR"
-git init -q
-git remote add origin https://github.com/Ground-Zerro/Phobos.git
-git config core.sparseCheckout true
-echo "wg-obfuscator" > .git/info/sparse-checkout
-git pull origin main -q 2>/dev/null
-cp -f wg-obfuscator/bin/wg-obfuscator-$(uname -m) "$PHOBOS_DIR/bin/" 2>/dev/null || true
-chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-*
-ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-$(uname -m)" /usr/local/bin/wg-obfuscator
-rm -rf "$REPO_DIR"
-echo "   Obfuscator installed."
+if [ ! -f /usr/local/bin/wg-obfuscator ]; then
+    REPO_DIR="/tmp/phobos-repo"
+    rm -rf "$REPO_DIR"
+    mkdir -p "$REPO_DIR"
+    cd "$REPO_DIR"
+    git init -q
+    git remote add origin https://github.com/Ground-Zerro/Phobos.git
+    git config core.sparseCheckout true
+    echo "wg-obfuscator" > .git/info/sparse-checkout
+    git pull origin main -q 2>/dev/null
+    cp -f wg-obfuscator/bin/wg-obfuscator-$(uname -m) "$PHOBOS_DIR/bin/" 2>/dev/null || true
+    chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-*
+    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-$(uname -m)" /usr/local/bin/wg-obfuscator
+    rm -rf "$REPO_DIR"
+    echo "   Obfuscator installed."
+else
+    echo "   Obfuscator already installed, skipping."
+fi
 
 # ── 3. WireGuard ──
-echo "[3/6] Configuring WireGuard..."
-WG_PRIV=$(wg genkey)
-WG_PUB=$(echo "$WG_PRIV" | wg pubkey)
+echo "[3/7] Configuring WireGuard..."
+if [ -f /etc/wireguard/wg0.conf ]; then
+    echo "   Existing wg0.conf preserved (backed up to $BACKUP_DIR)"
+    WG_PRIV=$(grep '^PrivateKey' /etc/wireguard/wg0.conf | cut -d= -f2- | tr -d ' ')
+    WG_PUB=$(echo "$WG_PRIV" | wg pubkey)
+else
+    WG_PRIV=$(wg genkey)
+    WG_PUB=$(echo "$WG_PRIV" | wg pubkey)
 
-cat > /etc/wireguard/wg0.conf << WGEOF
+    cat > /etc/wireguard/wg0.conf << WGEOF
 [Interface]
 Address = 10.25.0.1/16
 ListenPort = 51820
@@ -67,16 +169,17 @@ PrivateKey = $WG_PRIV
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o $IFACE -j MASQUERADE
 PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o $IFACE -j MASQUERADE
 WGEOF
+fi
 
 sysctl -w net.ipv4.ip_forward=1 -q
 grep -q "net.ipv4.ip_forward = 1" /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
 
-systemctl enable wg-quick@wg0 -q
+systemctl enable wg-quick@wg0 -q 2>/dev/null || true
 systemctl restart wg-quick@wg0
 echo "   WireGuard running."
 
 # ── 4. Obfuscator (multi-port) ──
-echo "[4/6] Setting up obfuscator..."
+echo "[4/7] Setting up obfuscator..."
 OBF_KEY=$(head -c 32 /dev/urandom | base64 | tr -d "/+=" | head -c 32)
 
 # Block direct WG access
@@ -121,7 +224,7 @@ done
 echo "   Obfuscator running on ports: $OBF_PORTS"
 
 # ── 5. Save config ──
-echo "[5/6] Saving config..."
+echo "[5/7] Saving config..."
 cat > "$PHOBOS_DIR/server/server.env" << EOF
 SERVER_WG_PRIVATE_KEY=$WG_PRIV
 SERVER_WG_PUBLIC_KEY=$WG_PUB
@@ -134,7 +237,7 @@ ROLE=secondary
 EOF
 
 # ── 6. Mini-API ──
-echo "[6/6] Setting up mini-API..."
+echo "[6/7] Setting up mini-API..."
 cat > "$PHOBOS_DIR/server/api.py" << 'PYEOF'
 #!/usr/bin/env python3
 """Phobos Secondary Server API — peer management + health."""
@@ -220,7 +323,7 @@ def info():
         "ip": env.get("SERVER_PUBLIC_IP_V4"),
         "wg_public_key": env.get("SERVER_WG_PUBLIC_KEY"),
         "obfuscator_key": env.get("OBFUSCATOR_KEY"),
-        "ports": env.get("OBFUSCATOR_PORTS", "51821").split(","),
+        "ports": env.get("OBFUSCATOR_PORTS", "2083").split(","),
         "role": "secondary"
     })
 
@@ -248,7 +351,94 @@ systemctl daemon-reload
 systemctl enable phobos-api -q
 systemctl start phobos-api
 
-# ── 7. Register with main server ──
+# ── 7. Uninstall script ──
+echo "[7/7] Creating uninstall script..."
+cat > "$PHOBOS_DIR/server/phobos-secondary-uninstall.sh" << 'UNINSTEOF'
+#!/bin/bash
+# Phobos Secondary Server — Clean Uninstall
+set -e
+
+PHOBOS_DIR="/opt/Phobos"
+
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║    Phobos Secondary Server — Uninstall               ║"
+echo "╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "This will remove:"
+echo "  - WireGuard interface wg0"
+echo "  - All wg-obfuscator instances"
+echo "  - Phobos mini-API"
+echo "  - Phobos config files"
+echo ""
+echo "Backups (if any) in $PHOBOS_DIR/backup/ will be KEPT."
+echo ""
+echo "Press Enter to continue or Ctrl+C to abort..."
+read -r < /dev/tty 2>/dev/null || true
+
+echo "Stopping services..."
+# Stop obfuscator instances
+for svc in /etc/systemd/system/wg-obfuscator-*.service; do
+    [ -f "$svc" ] || continue
+    name=$(basename "$svc" .service)
+    systemctl stop "$name" 2>/dev/null || true
+    systemctl disable "$name" 2>/dev/null || true
+    rm -f "$svc"
+    echo "  Removed $name"
+done
+
+# Stop mini-API
+systemctl stop phobos-api 2>/dev/null || true
+systemctl disable phobos-api 2>/dev/null || true
+rm -f /etc/systemd/system/phobos-api.service
+echo "  Removed phobos-api"
+
+# Stop WireGuard
+systemctl stop wg-quick@wg0 2>/dev/null || true
+systemctl disable wg-quick@wg0 2>/dev/null || true
+echo "  Stopped WireGuard wg0"
+
+systemctl daemon-reload
+
+# Remove iptables rule
+iptables -D INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP 2>/dev/null || true
+
+echo ""
+echo "Removing files..."
+
+# Remove WG config
+rm -f /etc/wireguard/wg0.conf
+echo "  Removed /etc/wireguard/wg0.conf"
+
+# Remove obfuscator binary (only the symlink)
+rm -f /usr/local/bin/wg-obfuscator
+echo "  Removed /usr/local/bin/wg-obfuscator"
+
+# Keep backups, remove the rest
+if [ -d "$PHOBOS_DIR/backup" ]; then
+    echo "  Preserving $PHOBOS_DIR/backup/"
+    # Remove everything except backup dir
+    find "$PHOBOS_DIR" -mindepth 1 -maxdepth 1 ! -name 'backup' -exec rm -rf {} \;
+else
+    rm -rf "$PHOBOS_DIR"
+fi
+
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║         Uninstall Complete                           ║"
+echo "╠══════════════════════════════════════════════════════╣"
+echo "║  WireGuard   : removed                               ║"
+echo "║  Obfuscator  : removed                               ║"
+echo "║  Mini-API    : removed                               ║"
+if [ -d "$PHOBOS_DIR/backup" ]; then
+echo "║  Backups     : preserved in $PHOBOS_DIR/backup/     ║"
+fi
+echo "╚══════════════════════════════════════════════════════╝"
+echo ""
+UNINSTEOF
+chmod +x "$PHOBOS_DIR/server/phobos-secondary-uninstall.sh"
+
+# ── Register with main server ──
 echo ""
 echo "Registering with main server..."
 REG_DATA=$(cat << EOF
@@ -260,7 +450,7 @@ REG_DATA=$(cat << EOF
 }
 EOF
 )
-curl -s -X POST "http://${MAIN_SERVER}:8443/api/servers/register" \
+curl -s -X POST "http://${MAIN_SERVER}:$(cat /opt/phobos-panel/.port 2>/dev/null || echo 8443)/api/servers/register" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${MAIN_API_KEY}" \
     -d "$REG_DATA" || echo "   (Registration will be done manually via panel)"
@@ -275,5 +465,10 @@ echo "║  OBF Key       : $OBF_KEY"
 echo "║  OBF Ports     : $OBF_PORTS"
 echo "║  API           : http://$SERVER_IP:8444"
 echo "║  Main server   : $MAIN_SERVER"
+echo "║                                                      ║"
+echo "║  Uninstall: bash $PHOBOS_DIR/server/phobos-secondary-uninstall.sh"
 echo "╚══════════════════════════════════════════════════════╝"
+if [ -d "$PHOBOS_DIR/backup" ]; then
+echo "  Backups: $BACKUP_DIR"
+fi
 echo ""
