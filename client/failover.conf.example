@@ -3,7 +3,7 @@
 # KEY_N=obfuscation_key_for_server_N
 
 # Primary server (main, with web panel)
-SERVER_1=144.124.252.104:51821,51822,51823
+SERVER_1=144.124.252.104:2083,5443,993
 KEY_1=Fc3X8GbVQD2FuHPbOjKiaP83nWSwNojJ
 
 # Secondary server (backup, VPN only)
