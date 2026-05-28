@@ -686,10 +686,43 @@ def settings_page():
     <div class="card">
     <h2>Установка на роутер</h2>
     <p style="color:#94a3b8;font-size:.85em;margin-bottom:8px">Keenetic/Netcraze с Entware — выполнить по SSH на роутере:</p>
-    <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.85em;word-break:break-all" id="install-cmd">curl -s http://{SERVER_IP}/init/TOKEN.sh | sh</code>
+    {_render_install_commands()}
     </div>
     </div>"""
     return render(html)
+
+
+TOKENS_FILE = f"{PHOBOS_DIR}/tokens/tokens.json"
+
+
+def _render_install_commands():
+    """Read tokens and render install commands for each client."""
+    try:
+        if os.path.exists(TOKENS_FILE):
+            with open(TOKENS_FILE) as f:
+                tokens = json.load(f)
+        else:
+            tokens = []
+    except Exception:
+        tokens = []
+
+    if not tokens:
+        return '<p style="color:#64748b;font-size:.85em">Нет активных токенов. Добавьте клиента.</p>'
+
+    lines = ""
+    for t in tokens:
+        client = t.get("client", "?")
+        token = t.get("token", "")
+        expires = t.get("expires", 0)
+        exp_str = datetime.fromtimestamp(expires).strftime("%Y-%m-%d %H:%M") if expires else "?"
+        cmd = f"wget -O - http://{SERVER_IP}/init/{token}.sh | sh"
+        lines += f"""
+        <div style="margin-bottom:10px">
+        <span style="color:#a5b4fc;font-size:.85em">{client}</span>
+        <span style="color:#64748b;font-size:.75em"> (до {exp_str})</span>
+        <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all;margin-top:4px">{cmd}</code>
+        </div>"""
+    return lines
 
 
 def _load_server_env():
