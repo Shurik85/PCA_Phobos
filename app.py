@@ -419,6 +419,7 @@ def sessions_page():
         <a href="/sessions" class="active">Сессии ({online_count})</a>
         <a href="/clients">Клиенты</a>
         <a href="/labels">Метки</a>
+        <a href="/servers">Серверы</a>
         <a href="/settings">Настройки</a>
         <a href="/logout">Выход</a>
     </div>
@@ -555,6 +556,7 @@ def clients_page():
         <a href="/sessions">Сессии</a>
         <a href="/clients" class="active">Клиенты</a>
         <a href="/labels">Метки</a>
+        <a href="/servers">Серверы</a>
         <a href="/settings">Настройки</a>
         <a href="/logout">Выход</a>
     </div>
@@ -612,6 +614,7 @@ def labels_page():
         <a href="/sessions">Сессии</a>
         <a href="/clients">Клиенты</a>
         <a href="/labels" class="active">Метки</a>
+        <a href="/servers">Серверы</a>
         <a href="/settings">Настройки</a>
         <a href="/logout">Выход</a>
     </div>
@@ -723,6 +726,225 @@ def _render_install_commands():
         <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all;margin-top:4px">{cmd}</code>
         </div>"""
     return lines
+
+
+SERVERS_FILE = f"{PANEL_DIR}/servers.json"
+
+
+def load_servers():
+    if os.path.exists(SERVERS_FILE):
+        with open(SERVERS_FILE) as f:
+            return json.load(f)
+    return []
+
+
+def save_servers(servers):
+    with open(SERVERS_FILE, "w") as f:
+        json.dump(servers, f, indent=2)
+
+
+def check_server_health(server):
+    """Check secondary server health via API."""
+    try:
+        import urllib.request
+        url = f"http://{server['ip']}:8444/api/health"
+        req = urllib.request.Request(url, headers={"X-API-Key": server.get("api_key", "")})
+        resp = urllib.request.urlopen(req, timeout=5)
+        return json.loads(resp.read())
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def sync_peer_to_server(server, public_key, allowed_ips, action="add"):
+    """Add or remove peer on secondary server."""
+    try:
+        import urllib.request
+        url = f"http://{server['ip']}:8444/api/peers/{action}"
+        data = json.dumps({"public_key": public_key, "allowed_ips": allowed_ips}).encode()
+        req = urllib.request.Request(url, data=data, headers={
+            "Content-Type": "application/json",
+            "X-API-Key": server.get("api_key", "")
+        })
+        resp = urllib.request.urlopen(req, timeout=10)
+        return json.loads(resp.read())
+    except Exception:
+        return {"status": "error"}
+
+
+def sync_peer_to_all_servers(public_key, allowed_ips, action="add"):
+    """Sync peer to all secondary servers."""
+    servers = load_servers()
+    for srv in servers:
+        if srv.get("enabled", True):
+            sync_peer_to_server(srv, public_key, allowed_ips, action)
+
+
+@app.route("/api/servers/register", methods=["POST"])
+def api_register_server():
+    s = load_settings()
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key != s.get("server_api_key", ""):
+        return json.dumps({"error": "unauthorized"}), 401, {"Content-Type": "application/json"}
+
+    data = request.json
+    servers = load_servers()
+    ip = data.get("ip", "")
+
+    for srv in servers:
+        if srv["ip"] == ip:
+            srv.update(data)
+            srv["last_seen"] = datetime.now().isoformat()
+            save_servers(servers)
+            return json.dumps({"status": "updated"}), 200, {"Content-Type": "application/json"}
+
+    data["last_seen"] = datetime.now().isoformat()
+    data["enabled"] = True
+    data["api_key"] = api_key
+    servers.append(data)
+    save_servers(servers)
+    return json.dumps({"status": "registered"}), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/servers", methods=["GET", "POST"])
+@auth_required
+def servers_page():
+    s = load_settings()
+    servers = load_servers()
+    msg = ""
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add":
+            ip = request.form.get("ip", "").strip()
+            api_key = request.form.get("api_key", "").strip()
+            if ip:
+                servers.append({
+                    "ip": ip,
+                    "api_key": api_key,
+                    "enabled": True,
+                    "last_seen": "",
+                    "wg_public_key": "",
+                    "obfuscator_key": "",
+                    "ports": ""
+                })
+                save_servers(servers)
+                msg = f'<div class="alert alert-ok">Сервер {ip} добавлен</div>'
+
+        elif action == "remove":
+            ip = request.form.get("ip", "").strip()
+            servers = [s for s in servers if s.get("ip") != ip]
+            save_servers(servers)
+            msg = f'<div class="alert alert-ok">Сервер удалён</div>'
+
+        elif action == "sync":
+            ip = request.form.get("ip", "").strip()
+            srv = next((s for s in servers if s["ip"] == ip), None)
+            if srv:
+                clients = get_clients()
+                synced = 0
+                for c in clients:
+                    pub = c.get("public_key", "")
+                    tip = c.get("tunnel_ip_v4", "")
+                    if pub and tip:
+                        res = sync_peer_to_server(srv, pub, f"{tip}/32", "add")
+                        if res.get("status") == "ok":
+                            synced += 1
+                msg = f'<div class="alert alert-ok">Синхронизировано {synced} клиентов на {ip}</div>'
+
+        elif action == "fetch_info":
+            ip = request.form.get("ip", "").strip()
+            for srv in servers:
+                if srv["ip"] == ip:
+                    try:
+                        import urllib.request
+                        url = f"http://{ip}:8444/api/info"
+                        req = urllib.request.Request(url, headers={"X-API-Key": srv.get("api_key", "")})
+                        resp = urllib.request.urlopen(req, timeout=5)
+                        info = json.loads(resp.read())
+                        srv["wg_public_key"] = info.get("wg_public_key", "")
+                        srv["obfuscator_key"] = info.get("obfuscator_key", "")
+                        srv["ports"] = ",".join(info.get("ports", []))
+                        save_servers(servers)
+                        msg = f'<div class="alert alert-ok">Инфо получено от {ip}</div>'
+                    except Exception as e:
+                        msg = f'<div class="alert alert-error">Ошибка: {e}</div>'
+
+        elif action == "set_api_key":
+            new_key = request.form.get("server_api_key", "").strip()
+            if new_key:
+                s["server_api_key"] = new_key
+                save_settings(s)
+                msg = '<div class="alert alert-ok">API ключ обновлён</div>'
+
+    # Build server rows
+    rows = ""
+    for srv in servers:
+        ip = srv.get("ip", "")
+        health = check_server_health(srv)
+        status_class = "badge-on" if health.get("status") == "ok" else "badge-off"
+        status_text = "Online" if health.get("status") == "ok" else "Offline"
+        peers = health.get("peers", "?")
+        ports = srv.get("ports", "?")
+
+        rows += f"""<tr>
+        <td>{ip}</td>
+        <td>{ports}</td>
+        <td>{peers}</td>
+        <td><span class="badge {status_class}">{status_text}</span></td>
+        <td>
+            <form method="post" style="display:inline">
+            <input type="hidden" name="ip" value="{ip}">
+            <button name="action" value="sync" class="btn btn-primary btn-sm">Sync</button>
+            <button name="action" value="fetch_info" class="btn btn-primary btn-sm">Info</button>
+            <button name="action" value="remove" class="btn btn-danger btn-sm" onclick="return confirm('Удалить?')">✕</button>
+            </form>
+        </td>
+        </tr>"""
+
+    api_key = s.get("server_api_key", "")
+
+    html = f"""
+    <div class="container">
+    <div class="nav">
+        <a href="/sessions">Сессии</a>
+        <a href="/clients">Клиенты</a>
+        <a href="/labels">Метки</a>
+        <a href="/servers" class="active">Серверы</a>
+        <a href="/servers">Серверы</a>
+        <a href="/settings">Настройки</a>
+        <a href="/logout">Выход</a>
+    </div>
+    {msg}
+    <div class="card">
+    <h2>API ключ для secondary серверов</h2>
+    <form method="post" class="form-row">
+    <input type="hidden" name="action" value="set_api_key">
+    <input type="text" name="server_api_key" value="{api_key}" placeholder="API ключ" style="width:300px">
+    <button class="btn btn-primary" type="submit">Сохранить</button>
+    </form>
+    </div>
+
+    <div class="card">
+    <h2>Серверы VPN</h2>
+    <table>
+    <tr><th>IP</th><th>Порты</th><th>Peers</th><th>Статус</th><th></th></tr>
+    {rows}
+    </table>
+    <form method="post" class="form-row" style="margin-top:16px">
+    <input type="hidden" name="action" value="add">
+    <input type="text" name="ip" placeholder="IP сервера" required>
+    <input type="text" name="api_key" placeholder="API ключ" style="width:200px">
+    <button class="btn btn-primary" type="submit">Добавить</button>
+    </form>
+    </div>
+
+    <div class="card">
+    <h2>Установка secondary сервера</h2>
+    <p style="color:#94a3b8;font-size:.85em;margin-bottom:8px">На новом VPS выполнить:</p>
+    <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all">MAIN_SERVER={SERVER_IP} MAIN_API_KEY={api_key} bash &lt;(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)</code>
+    </div>
+    </div>"""
+    return render(html)
 
 
 def _load_server_env():
