@@ -5,6 +5,9 @@
 #
 #  Usage:
 #    bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+#
+#  Custom port:
+#    PANEL_PORT=39172 bash <(curl ...)
 # ============================================================
 
 set -e
@@ -12,8 +15,12 @@ set -e
 PANEL_PASS="${PANEL_PASS:-OcAdmin2026!}"
 TG_TOKEN="${TG_TOKEN:-}"
 TG_CHAT="${TG_CHAT:-}"
-PANEL_PORT="${PANEL_PORT:-8443}"
 PANEL_DIR="/opt/phobos-panel"
+
+# Generate random 5-digit port (10000-59999) if not specified
+if [ -z "$PANEL_PORT" ]; then
+    PANEL_PORT=$(shuf -i 10000-59999 -n 1 2>/dev/null || awk 'BEGIN{srand(); print int(10000+rand()*50000)}')
+fi
 
 # ── Check Phobos is installed ──
 if [ ! -d "/opt/Phobos" ]; then
@@ -60,11 +67,29 @@ if [ ! -f "$PANEL_DIR/settings.json" ]; then
 EOF
 fi
 
+# Save port for future reference
+echo "$PANEL_PORT" > "$PANEL_DIR/.port"
+
 # ── 3. Setup systemd service ──
 echo "[3/3] Setting up service..."
 
-curl -fsSL "https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/phobos-panel.service" \
-    > /etc/systemd/system/phobos-panel.service
+cat > /etc/systemd/system/phobos-panel.service <<EOF
+[Unit]
+Description=Phobos VPN Web Panel
+After=network.target wg-quick@wg0.service
+Wants=wg-quick@wg0.service
+
+[Service]
+Type=simple
+WorkingDirectory=$PANEL_DIR
+ExecStart=/usr/bin/gunicorn -w 1 -b 0.0.0.0:$PANEL_PORT app:app
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 systemctl daemon-reload
 systemctl enable phobos-panel -q
@@ -79,5 +104,7 @@ echo "╠═══════════════════════�
 echo "║  Web Panel   : http://$SERVER_IP:$PANEL_PORT"
 echo "║  Admin login : admin"
 echo "║  Admin pass  : $PANEL_PASS"
+echo "║                                                      ║"
+echo "║  ⚠ Запомните порт: $PANEL_PORT                    ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
