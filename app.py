@@ -545,7 +545,7 @@ def clients_page():
             <form method="post" onsubmit="return confirm('Удалить {cid}?')">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="client_id" value="{cid}">
-            <button class="btn btn-danger btn-sm" type="submit">✕</button>
+            <button class="btn btn-danger btn-sm" type="submit" onclick="return confirm('Удалить метку?')">Удалить</button>
             </form>
         </td>
         </tr>"""
@@ -605,7 +605,7 @@ def labels_page():
         <td><form method="post" style="display:inline">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="ip" value="{ip}">
-        <button class="btn btn-danger btn-sm" type="submit">✕</button>
+        <button class="btn btn-danger btn-sm" type="submit" onclick="return confirm('Удалить метку?')">Удалить</button>
         </form></td></tr>"""
 
     html = f"""
@@ -621,6 +621,7 @@ def labels_page():
     {msg}
     <div class="card">
     <h2>Метки по Real IP</h2>
+    <p style="color:#94a3b8;font-size:.85em;margin-bottom:12px">Привяжите понятное имя (квартира, офис, дача) к внешнему IP адресу роутера. Метка отображается в таблице сессий и в Telegram уведомлениях вместо голого IP.</p>
     <form method="post" class="form-row" style="margin-bottom:16px">
     <input type="hidden" name="action" value="add">
     <input type="text" name="ip" placeholder="Real IP" required>
@@ -680,7 +681,7 @@ def settings_page():
     <table>
     <tr><td>VPS IP</td><td>{SERVER_IP}</td></tr>
     <tr><td>WireGuard порт</td><td>51820 (localhost)</td></tr>
-    <tr><td>Обфускатор порт</td><td>51821</td></tr>
+    <tr><td>Обфускатор порты</td><td>{_load_server_env().get('OBFUSCATOR_PORTS', '2083,5443,993')}</td></tr>
     <tr><td>Панель порт</td><td>8443</td></tr>
     <tr><td>Phobos клиенты</td><td>{CLIENTS_DIR}</td></tr>
     </table>
@@ -896,7 +897,7 @@ def servers_page():
             <input type="hidden" name="ip" value="{ip}">
             <button name="action" value="sync" class="btn btn-primary btn-sm">Sync</button>
             <button name="action" value="fetch_info" class="btn btn-primary btn-sm">Info</button>
-            <button name="action" value="remove" class="btn btn-danger btn-sm" onclick="return confirm('Удалить?')">✕</button>
+            <button name="action" value="remove" class="btn btn-danger btn-sm" onclick="return confirm('Удалить сервер?')">Удалить</button>
             </form>
         </td>
         </tr>"""
@@ -910,13 +911,13 @@ def servers_page():
         <a href="/clients">Клиенты</a>
         <a href="/labels">Метки</a>
         <a href="/servers" class="active">Серверы</a>
-        <a href="/servers">Серверы</a>
         <a href="/settings">Настройки</a>
         <a href="/logout">Выход</a>
     </div>
     {msg}
     <div class="card">
     <h2>API ключ для secondary серверов</h2>
+    <p style="color:#94a3b8;font-size:.85em;margin-bottom:12px">Единый ключ аутентификации для связи с резервными серверами. Укажите его при установке secondary сервера.</p>
     <form method="post" class="form-row">
     <input type="hidden" name="action" value="set_api_key">
     <input type="text" name="server_api_key" value="{api_key}" placeholder="API ключ" style="width:300px">
@@ -926,6 +927,7 @@ def servers_page():
 
     <div class="card">
     <h2>Серверы VPN</h2>
+    <p style="color:#94a3b8;font-size:.85em;margin-bottom:12px">Резервные VPN серверы для автоматического переключения. Роутеры с health monitor автоматически переходят на backup если основной сервер недоступен. Кнопка <b>Sync</b> — синхронизирует всех клиентов на выбранный сервер, <b>Info</b> — запрашивает данные сервера.</p>
     <table>
     <tr><th>IP</th><th>Порты</th><th>Peers</th><th>Статус</th><th></th></tr>
     {rows}
@@ -940,7 +942,7 @@ def servers_page():
 
     <div class="card">
     <h2>Установка secondary сервера</h2>
-    <p style="color:#94a3b8;font-size:.85em;margin-bottom:8px">На новом VPS выполнить:</p>
+    <p style="color:#94a3b8;font-size:.85em;margin-bottom:8px">Одна команда разворачивает WireGuard + обфускатор + мини-API на новом VPS. Сервер автоматически зарегистрируется в панели. Выполнить по SSH на новом VPS:</p>
     <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all">MAIN_SERVER={SERVER_IP} MAIN_API_KEY={api_key} bash &lt;(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)</code>
     </div>
     </div>"""
