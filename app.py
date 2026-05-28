@@ -330,10 +330,7 @@ input:focus{outline:none;border-color:#4f46e5}
 </div>
 CONTENT
 <div class="footer">
-<a href="https://github.com/andrey271192/PCA_Phobos" target="_blank">GitHub</a> ·
-<a href="https://boosty.to/andrey27/donate" target="_blank">Boosty</a> ·
-<a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank">Ozon СБП</a> ·
-<a href="https://t.me/lot_andrey" target="_blank">Telegram @lot_andrey</a>
+Phobos VPN Panel
 </div>
 </body></html>"""
 

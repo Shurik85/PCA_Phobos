@@ -2,8 +2,6 @@
 
 Веб-панель управления для [Phobos](https://git.zerrolabs.org/Ground-Zerro/Phobos) (обфусцированный WireGuard VPN).
 
-> Где поддержать: [Boosty (донат)](https://boosty.to/andrey27/donate) · [Ozon СБП](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798) · [Telegram @lot_andrey](https://t.me/lot_andrey) · [**GitHub** ↗](https://github.com/andrey271192/PCA_Phobos)
-
 ## Быстрый старт
 
 **Требование:** Phobos уже установлен на VPS ([инструкция](https://git.zerrolabs.org/Ground-Zerro/Phobos)).
@@ -115,11 +113,3 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/app.py
 systemctl restart phobos-panel
 ```
 
----
-
-## Поддержка проекта
-
-- ⭐ **GitHub:** [andrey271192/PCA_Phobos](https://github.com/andrey271192/PCA_Phobos)
-- 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
-- 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
-- ✉️ **Telegram:** [@lot_andrey](https://t.me/lot_andrey)
