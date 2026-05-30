@@ -403,6 +403,23 @@ def generate_failover_conf_for_client(client_id):
     return "\n".join(lines) + "\n"
 
 
+def panel_version():
+    try:
+        return open(os.path.join(PANEL_DIR, ".version")).read().strip()
+    except Exception:
+        return "unknown"
+
+
+def run_update(arg):
+    import subprocess
+    try:
+        r = subprocess.run(["/opt/Phobos/server/update.sh", arg],
+                           capture_output=True, text=True, timeout=150)
+        return (r.stdout + r.stderr)[-1200:]
+    except Exception as e:
+        return "update error: " + str(e)
+
+
 def build_phone_config(cid, mode="android"):
     """Assemble a phone client config from the client's files.
     android = WireGuard + [instance] obfuscator -> phobos:// link (PhobosWG app).
@@ -1088,6 +1105,16 @@ def labels_page():
 def settings_page():
     s = load_settings()
     msg = ""
+    if request.method == "POST" and request.form.get("action") in ("update", "rollback"):
+        if request.form.get("action") == "update":
+            _out = run_update(request.form.get("target", "").strip() or "main")
+        else:
+            _out = run_update("--rollback")
+        s = load_settings()
+        return render(f'''<div class="container">{nav("settings")}<div class="card">
+        <h2>{tr("Результат", "Result")}</h2>
+        <pre style="white-space:pre-wrap;font-size:.8em;background:#0f172a;padding:12px;border-radius:8px">{_out}</pre>
+        <a href="/settings" class="btn btn-sm">{tr("← к настройкам", "← back to settings")}</a></div></div>''')
     if request.method == "POST":
         new_pass = request.form.get("admin_pass", "").strip()
         if new_pass:
@@ -1113,6 +1140,20 @@ def settings_page():
     <div class="form-row"><label>Telegram Chat ID</label><input type="text" name="tg_chat_id" value="{s.get('tg_chat_id','')}"></div>
     <div class="form-row"><label>{tr("Интервал (сек)","Interval (s)")}</label><input type="number" name="monitor_interval" value="{s.get('monitor_interval',30)}" min="10">{hlp("Как часто фоновый монитор опрашивает серверы и обновляет статусы/оповещения. Меньше = свежее, но больше нагрузка.","How often the background monitor polls servers and refreshes statuses/alerts. Lower = fresher but more load.")}</div>
     <div class="form-row"><label></label><button class="btn btn-primary" type="submit">{tr("Сохранить","Save")}</button></div>
+    </form>
+    </div>
+
+    <div class="card">
+    <h2>{tr("Версия и обновления","Version & updates")} {hlp("Скачивает свежие файлы PCA-слоя (панель + скрипты) с GitHub и перезапускает панель. Ключи WireGuard, server.env и клиенты НЕ трогаются. Пусто или main = последняя версия; можно указать тег (например v1.1.0). Откат восстанавливает предыдущую версию из автоматического бэкапа.", "Fetches the latest PCA files (panel + scripts) from GitHub and restarts the panel. WireGuard keys, server.env and clients are NOT touched. Empty or main = latest; you can pass a tag (e.g. v1.1.0). Rollback restores the previous version from an automatic backup.")}</h2>
+    <p>{tr("Установленная версия","Installed version")}: <b style="color:#a5b4fc">{panel_version()}</b></p>
+    <form method="post" class="form-row">
+    <input type="hidden" name="action" value="update">
+    <input type="text" name="target" placeholder="main / v1.1.0" style="width:150px">
+    <button class="btn btn-primary" type="submit" onclick="return confirm('{tr("Обновить панель и скрипты?","Update panel and scripts?")}')">{tr("Обновить","Update")}</button>
+    </form>
+    <form method="post" style="margin-top:8px">
+    <input type="hidden" name="action" value="rollback">
+    <button class="btn btn-danger btn-sm" type="submit" onclick="return confirm('{tr("Откатить на предыдущую версию?","Roll back to the previous version?")}')">{tr("Откатить на предыдущую","Rollback")}</button>
     </form>
     </div>
 

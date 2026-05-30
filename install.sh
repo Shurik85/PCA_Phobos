@@ -171,6 +171,8 @@ fetch overlay/phobos-pull.sh                    "$PHOBOS_DIR/repo/client/templat
 fetch server/phobos-health.sh                   "$PHOBOS_DIR/server/phobos-health.sh"                     && chmod +x "$PHOBOS_DIR/server/phobos-health.sh"
 fetch server/phobos-pull.sh                     "$PHOBOS_DIR/server/phobos-pull.sh"                       && chmod +x "$PHOBOS_DIR/server/phobos-pull.sh"
 fetch server/phobos-router-watchdog.py          "$PHOBOS_DIR/server/phobos-router-watchdog.py"
+fetch update.sh                                 "$PHOBOS_DIR/server/update.sh"             && chmod +x "$PHOBOS_DIR/server/update.sh" && ln -sf "$PHOBOS_DIR/server/update.sh" /usr/local/bin/phobos-update
+mkdir -p "$PANEL_DIR"; fetch VERSION "$PANEL_DIR/.version" 2>/dev/null || true
 [ -f "$PHOBOS_DIR/tokens/tokens.json" ] || echo '[]' > "$PHOBOS_DIR/tokens/tokens.json"
 
 # ── 7. web panel ──
