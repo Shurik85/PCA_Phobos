@@ -661,6 +661,28 @@ def panel_version():
         return "unknown"
 
 
+GH_TOKEN_FILE = "/opt/phobos-panel/.gh_token"
+
+
+def gh_token_present():
+    try:
+        return os.path.exists(GH_TOKEN_FILE) and os.path.getsize(GH_TOKEN_FILE) > 0
+    except Exception:
+        return False
+
+
+def save_gh_token(tok):
+    tok = (tok or "").strip()
+    if not tok:
+        return False
+    fd = os.open(GH_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, tok.encode())
+    finally:
+        os.close(fd)
+    return True
+
+
 def run_update(arg):
     import subprocess
     try:
@@ -1384,9 +1406,16 @@ def labels_page():
 def settings_page():
     s = load_settings()
     msg = ""
-    if request.method == "POST" and request.form.get("action") in ("update", "rollback", "check"):
+    if request.method == "POST" and request.form.get("action") in ("update", "rollback", "check", "save_token"):
         _act = request.form.get("action")
-        if _act == "update":
+        _tok = request.form.get("gh_token", "").strip()
+        if _tok:
+            save_gh_token(_tok)
+        if _act == "save_token":
+            _out = tr("Токен подписчика сохранён. Теперь можно переключаться на beta/dev.",
+                      "Subscriber token saved. You can now switch to beta/dev.") if _tok else \
+                   tr("Поле токена пустое.", "Token field is empty.")
+        elif _act == "update":
             _out = run_update(request.form.get("target", "").strip() or "main")
         elif _act == "check":
             _out = run_update("--check")
@@ -1428,9 +1457,25 @@ def settings_page():
     <div class="card">
     <h2>{tr("Версия и обновления","Version & updates")} {hlp("Скачивает свежие файлы PCA-слоя (панель + скрипты) с GitHub и перезапускает панель. Ключи WireGuard, server.env и клиенты НЕ трогаются. Пусто или main = последняя версия; можно указать тег (например v1.1.0). Откат восстанавливает предыдущую версию из автоматического бэкапа.", "Fetches the latest PCA files (panel + scripts) from GitHub and restarts the panel. WireGuard keys, server.env and clients are NOT touched. Empty or main = latest; you can pass a tag (e.g. v1.1.0). Rollback restores the previous version from an automatic backup.")}</h2>
     <p>{tr("Установленная версия","Installed version")}: <b style="color:#a5b4fc">{panel_version()}</b></p>
+    <p style="font-size:.85em;color:#94a3b8;margin:4px 0 8px">{tr("Каналы","Channels")}:
+      <b style="color:#22c55e">stable</b> — {tr("стабильная","stable")} ·
+      <b style="color:#eab308">beta</b> — {tr("тест","testing")} ·
+      <b style="color:#f97316">dev</b> — {tr("разработка","development")}.
+      {tr("stable — без токена. Для beta/dev вставь токен подписчика (по подписке Boosty), сохрани — и жми канал.","stable needs no token. For beta/dev paste your subscriber token (Boosty), save it, then click the channel.")}</p>
+    <form method="post" class="form-row" style="margin-bottom:8px">
+      <input type="hidden" name="action" value="save_token">
+      <input type="password" name="gh_token" placeholder="{tr('токен подписчика (для beta/dev)','subscriber token (for beta/dev)')}" style="width:240px" autocomplete="off">
+      <button class="btn btn-sm" style="background:#475569" type="submit">{tr("Сохранить токен","Save token")}</button>
+      <span style="font-size:.82em;color:{'#22c55e' if gh_token_present() else '#f59e0b'}">{(tr("✓ токен сохранён","✓ token saved") if gh_token_present() else tr("токен не задан — beta/dev недоступны","no token — beta/dev locked"))}</span>
+    </form>
+    <div class="form-row" style="gap:6px;margin-bottom:8px">
+      <form method="post" style="display:inline"><input type="hidden" name="action" value="update"><input type="hidden" name="target" value="stable"><button class="btn btn-sm" style="background:#16a34a" type="submit" onclick="return confirm('{tr("Перейти на стабильную?","Switch to stable?")}')">stable</button></form>
+      <form method="post" style="display:inline"><input type="hidden" name="action" value="update"><input type="hidden" name="target" value="beta"><button class="btn btn-sm" style="background:#ca8a04" type="submit" onclick="return confirm('{tr("Перейти на beta?","Switch to beta?")}')">beta</button></form>
+      <form method="post" style="display:inline"><input type="hidden" name="action" value="update"><input type="hidden" name="target" value="dev"><button class="btn btn-sm" style="background:#ea580c" type="submit" onclick="return confirm('{tr("Перейти на dev (нестабильно)?","Switch to dev (unstable)?")}')">dev</button></form>
+    </div>
     <form method="post" class="form-row">
     <input type="hidden" name="action" value="update">
-    <input type="text" name="target" placeholder="main / beta / v1.2.3" style="width:150px">
+    <input type="text" name="target" placeholder="stable / beta / dev / v1.2.4" style="width:170px">
     <button class="btn btn-primary" type="submit" onclick="return confirm('{tr("Обновить панель и скрипты?","Update panel and scripts?")}')">{tr("Обновить","Update")}</button>
     </form>
     <form method="post" style="display:inline">
