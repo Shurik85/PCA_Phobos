@@ -185,6 +185,43 @@ def _bot_status_text():
     return "\n".join(lines)
 
 
+def qr_png_bytes(data):
+    import qrcode, io
+    buf = io.BytesIO(); qrcode.make(data).save(buf, format="PNG"); return buf.getvalue()
+
+
+def tg_send_photo(chat, png, caption=""):
+    import urllib.request, secrets as _sec
+    token = load_settings().get("tg_bot_token", "")
+    if not token:
+        return None
+    boundary = "----phobos" + _sec.token_hex(8)
+    def fld(name, val):
+        return ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (boundary, name, val)).encode()
+    body = fld("chat_id", str(chat)) + fld("caption", caption) + fld("parse_mode", "HTML")
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"qr.png\"\r\nContent-Type: image/png\r\n\r\n" % boundary).encode()
+    body += png + ("\r\n--%s--\r\n" % boundary).encode()
+    try:
+        req = urllib.request.Request("https://api.telegram.org/bot%s/sendPhoto" % token, data=body,
+                                     headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary})
+        return urllib.request.urlopen(req, timeout=25).read()
+    except Exception:
+        return None
+
+
+def bot_send_new_client(chat, name):
+    ok, rep = create_client_cli(name)
+    tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
+    if ok:
+        try:
+            conf, link = build_phone_config(name, "android")
+            if link:
+                tg_send_photo(chat, qr_png_bytes(link), "📱 Android (PhobosWG) — отсканируй QR в приложении")
+                tg_api("sendMessage", {"chat_id": chat, "text": "phobos:// ссылка (Android):\n<code>%s</code>" % link, "parse_mode": "HTML"})
+        except Exception:
+            pass
+
+
 def telegram_bot():
     offset = 0
     import urllib.request
@@ -217,23 +254,40 @@ def telegram_bot():
                 text = (m.get("text") or "").strip()
                 if not text:
                     continue
-                low = text.lower()
-                if _bot_state.get(chat) == "add" and not text.startswith("/"):
-                    _bot_state.pop(chat, None)
-                    _, rep = create_client_cli(text)
-                    tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
-                    continue
-                toks = text.split()
-                cmd = toks[0].split("@")[0].lower()
-                arg = toks[1] if len(toks) > 1 else ""
-                if text.startswith("➕") or cmd in ("/add", "/new", "/create"):
+                # detect reply-keyboard button by its emoji prefix (NOT a command/arg)
+                btn = None
+                if not text.startswith("/"):
+                    if text.startswith("➕"):
+                        btn = "add"
+                    elif text.startswith("\U0001F5D1"):
+                        btn = "del"
+                    elif text.startswith("\U0001F4CB"):
+                        btn = "list"
+                    elif text.startswith("\U0001F4CA"):
+                        btn = "status"
+                    elif text.startswith("❓"):
+                        btn = "help"
+                # conversation: awaiting a client name to create
+                if _bot_state.get(chat) == "add":
+                    if btn is None and not text.startswith("/"):
+                        _bot_state.pop(chat, None)
+                        bot_send_new_client(chat, text)
+                        continue
+                    _bot_state.pop(chat, None)  # a button/command cancels the prompt
+                # parse slash command + arg (buttons carry no arg)
+                cmd = ""
+                arg = ""
+                if text.startswith("/"):
+                    toks = text.split()
+                    cmd = toks[0].split("@")[0].lower()
+                    arg = toks[1] if len(toks) > 1 else ""
+                if btn == "add" or cmd in ("/add", "/new", "/create"):
                     if arg:
-                        _, rep = create_client_cli(arg)
-                        tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
+                        bot_send_new_client(chat, arg)
                     else:
                         _bot_state[chat] = "add"
                         tg_api("sendMessage", {"chat_id": chat, "text": "Введите имя нового клиента (латиница, цифры, _ и -):"})
-                elif text.startswith("\U0001F5D1") or cmd in ("/del", "/delete", "/remove", "/rm"):
+                elif btn == "del" or cmd in ("/del", "/delete", "/remove", "/rm"):
                     if arg:
                         _, rep = delete_client_cli(arg)
                         tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
@@ -243,14 +297,14 @@ def telegram_bot():
                             tg_api("sendMessage", {"chat_id": chat, "text": "Клиентов нет.", "reply_markup": MAIN_KB})
                         else:
                             kb = {"inline_keyboard": [[{"text": "\U0001F5D1 " + c.get("client_id", ""), "callback_data": "del:" + c.get("client_id", "")}] for c in cl]}
-                            tg_api("sendMessage", {"chat_id": chat, "text": "Кого удалить?", "reply_markup": kb})
-                elif text.startswith("\U0001F4CB") or cmd in ("/list", "/ls"):
+                            tg_api("sendMessage", {"chat_id": chat, "text": "Кого удалить? Нажми на клиента:", "reply_markup": kb})
+                elif btn == "list" or cmd in ("/list", "/ls"):
                     cl = [c.get("client_id", "") for c in get_clients()]
                     rep = ("Клиенты (%d):\n" % len(cl)) + "\n".join("• " + c for c in cl) if cl else "Клиентов нет."
                     tg_api("sendMessage", {"chat_id": chat, "text": rep, "reply_markup": MAIN_KB})
-                elif text.startswith("\U0001F4CA") or cmd in ("/status", "/stat"):
+                elif btn == "status" or cmd in ("/status", "/stat"):
                     tg_api("sendMessage", {"chat_id": chat, "text": _bot_status_text(), "parse_mode": "HTML", "reply_markup": MAIN_KB})
-                elif text.startswith("❓") or cmd in ("/help", "/start"):
+                elif btn == "help" or cmd in ("/help", "/start"):
                     rep = ("<b>PCA Phobos — бот</b>\n\n"
                            "Кнопки внизу или команды:\n"
                            "➕ /add &lt;имя&gt; — создать клиента\n"
