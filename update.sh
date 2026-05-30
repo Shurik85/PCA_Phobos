@@ -60,10 +60,19 @@ apply_ref() {
     done
 }
 
+ref_exists() { curl -fsSL -m12 "$RAW/$1/app.py" -o /dev/null 2>/dev/null; }
+
 case "${1:-}" in
-  --version|-v)
-    echo "Установлено: $CUR"
-    echo "Доступно:    $(latest_version)"
+  --version|-v|--check)
+    echo "Установлено:    $CUR"
+    echo "Стабильная:     $(latest_version)"
+    beta=$(curl -fsSL -m8 "$RAW/beta/VERSION" 2>/dev/null | tr -d ' \r\n')
+    [ -n "$beta" ] && echo "Бета (beta):    $beta"
+    ;;
+  --versions|--tags)
+    echo "Доступные версии (git tags):"
+    curl -fsSL -m10 "https://api.github.com/repos/$REPO/tags?per_page=100" 2>/dev/null \
+      | grep -oE '"name": *"[^"]+"' | sed 's/.*"name": *"\(.*\)"/  \1/' || echo "  (нет данных)"
     ;;
   --list)
     echo "Бэкапы (для отката):"
@@ -83,6 +92,11 @@ case "${1:-}" in
     ;;
   *)
     ref="${1:-main}"; [ "$ref" = "latest" ] && ref="main"
+    if ! ref_exists "$ref"; then
+        echo "Версия/ветка '$ref' не найдена на GitHub. Обновление отменено (текущая $CUR не тронута)."
+        echo "Доступные: phobos-update --versions  ·  стабильная: $(latest_version)"
+        exit 1
+    fi
     target=$(curl -fsSL -m10 "$RAW/$ref/VERSION" 2>/dev/null | tr -d ' \r\n'); [ -z "$target" ] && target="$ref"
     echo "Текущая: $CUR  ->  целевая: $target  ($ref)"
     b=$(do_backup); echo "Бэкап: $b"

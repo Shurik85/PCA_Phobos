@@ -479,6 +479,7 @@ def kick_client_by_id(client_id):
 
 prev_session_keys = None
 prev_server_status = {}
+_down_streak = {}
 _last_fanout = 0
 server_stats_cache = {}
 server_handshakes_cache = {}
@@ -503,12 +504,19 @@ def get_local_stats():
 
 
 def get_remote_stats(server):
+    import urllib.request
+    url = f"http://{server['ip']}:8444/api/health"
+    req = urllib.request.Request(url, headers={"X-API-Key": server.get("api_key", "")})
+    data = None
+    for _attempt in range(2):  # retry once: smooths transient timeouts (1-worker agent)
+        try:
+            data = json.loads(urllib.request.urlopen(req, timeout=6).read())
+            break
+        except Exception:
+            data = None
     try:
-        import urllib.request
-        url = f"http://{server['ip']}:8444/api/health"
-        req = urllib.request.Request(url, headers={"X-API-Key": server.get("api_key", "")})
-        resp = urllib.request.urlopen(req, timeout=3)
-        data = json.loads(resp.read())
+        if data is None:
+            raise Exception("no response")
         # cache handshakes so page renders never block on remote HTTP
         server_handshakes_cache[server.get("ip", "")] = data.get("handshakes", {}) or {}
         # Filter peers: only count known client public keys
@@ -777,7 +785,7 @@ def push_config_to_router(client_id):
 
 
 def session_monitor():
-    global prev_session_keys, prev_server_status, server_stats_cache, _last_fanout
+    global prev_session_keys, prev_server_status, server_stats_cache, _last_fanout, _down_streak
     while True:
         try:
             s = load_settings()
@@ -814,19 +822,24 @@ def session_monitor():
             local_stats = get_local_stats()
             server_stats_cache[SERVER_IP] = local_stats
 
+            DOWN_CONFIRM = 3  # consecutive failed cycles before declaring a server DOWN
             for srv in servers:
                 ip = srv["ip"]
                 stats = get_remote_stats(srv)
-                server_stats_cache[ip] = stats
+                raw = stats.get("status", "down")
+                streak = _down_streak.get(ip, 0)
+                streak = streak + 1 if raw == "down" else 0
+                _down_streak[ip] = streak
+                # update cache on OK, or only once a DOWN is confirmed (keep last-good on transient)
+                if raw == "ok" or streak >= DOWN_CONFIRM:
+                    server_stats_cache[ip] = stats
+                eff = "down" if streak >= DOWN_CONFIRM else "ok"
                 was_up = prev_server_status.get(ip, "ok")
-                now_status = stats["status"]
-
-                if was_up == "ok" and now_status == "down":
+                if was_up == "ok" and eff == "down":
                     tg_send(f"🔴 <b>Server {ip}</b> DOWN!")
-                elif was_up == "down" and now_status == "ok":
+                elif was_up == "down" and eff == "ok":
                     tg_send(f"🟢 <b>Server {ip}</b> back ONLINE")
-
-                prev_server_status[ip] = now_status
+                prev_server_status[ip] = eff
 
             # periodic config fan-out to secondaries (covers CLI-created clients
             # and config drift; gated ~5 min, skips down servers)
@@ -1371,9 +1384,12 @@ def labels_page():
 def settings_page():
     s = load_settings()
     msg = ""
-    if request.method == "POST" and request.form.get("action") in ("update", "rollback"):
-        if request.form.get("action") == "update":
+    if request.method == "POST" and request.form.get("action") in ("update", "rollback", "check"):
+        _act = request.form.get("action")
+        if _act == "update":
             _out = run_update(request.form.get("target", "").strip() or "main")
+        elif _act == "check":
+            _out = run_update("--check")
         else:
             _out = run_update("--rollback")
         s = load_settings()
@@ -1414,8 +1430,12 @@ def settings_page():
     <p>{tr("Установленная версия","Installed version")}: <b style="color:#a5b4fc">{panel_version()}</b></p>
     <form method="post" class="form-row">
     <input type="hidden" name="action" value="update">
-    <input type="text" name="target" placeholder="main / v1.1.0" style="width:150px">
+    <input type="text" name="target" placeholder="main / beta / v1.2.3" style="width:150px">
     <button class="btn btn-primary" type="submit" onclick="return confirm('{tr("Обновить панель и скрипты?","Update panel and scripts?")}')">{tr("Обновить","Update")}</button>
+    </form>
+    <form method="post" style="display:inline">
+    <input type="hidden" name="action" value="check">
+    <button class="btn btn-sm" style="background:#0ea5e9" type="submit">{tr("Проверить обновления","Check for updates")}</button>
     </form>
     <form method="post" style="margin-top:8px">
     <input type="hidden" name="action" value="rollback">
