@@ -54,7 +54,6 @@ $PHOBOS_DIR/repo/client/templates/phobos-pull.sh|overlay/phobos-pull.sh
 $PHOBOS_DIR/server/phobos-health.sh|server/phobos-health.sh
 $PHOBOS_DIR/server/phobos-pull.sh|server/phobos-pull.sh
 $PHOBOS_DIR/server/phobos-router-watchdog.py|server/phobos-router-watchdog.py
-$PHOBOS_DIR/server/api.py|server/api.py
 $PHOBOS_DIR/server/update.sh|update.sh
 LIST
 }
