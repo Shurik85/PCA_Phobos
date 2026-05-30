@@ -25,7 +25,11 @@ PANEL_PASS="${PANEL_PASS:-OcAdmin2026!}"
 TG_TOKEN="${TG_TOKEN:-}"
 TG_CHAT="${TG_CHAT:-}"
 OBF_PORTS="${OBF_PORTS:-2083,5443,993}"
-PCA_BRANCH="${PCA_BRANCH:-main}"
+# Канал: stable по умолчанию (ветка main). Бета — по желанию: CHANNEL=beta (или PCA_BRANCH=beta).
+CHANNEL="${CHANNEL:-stable}"
+if [ -z "${PCA_BRANCH:-}" ]; then
+    case "$CHANNEL" in beta) PCA_BRANCH="beta";; *) PCA_BRANCH="main";; esac
+fi
 GH_TOKEN="${GH_TOKEN:-}"   # set for private-repo installs; empty for public
 PHOBOS_DIR="/opt/Phobos"
 PANEL_DIR="/opt/phobos-panel"

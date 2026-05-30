@@ -77,8 +77,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main
 | `OBF_PORTS`       | `2083,5443,993` | Порты обфускатора |
 | `TG_TOKEN`/`TG_CHAT` | пусто        | Telegram-уведомления |
 | `ALLOW_PLAIN_WG`  | пусто           | `=1` открыть порт 51820 для iOS WireGuard (без обфускации) |
+| `CHANNEL`         | `stable`        | канал: `stable` (ветка main) или `beta` |
 
 После установки панель напечатает адрес, логин, пароль и **API key** — сохрани их.
+
+> **Канал:** по умолчанию ставится **стабильная** версия (ветка `main`). Бета — по желанию:
+> ```bash
+> CHANNEL=beta bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+> ```
+> Переключение после установки: `phobos-update beta` / `phobos-update main`.
 
 ### Вторичный сервер (для failover / балансировки)
 
