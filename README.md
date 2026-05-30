@@ -135,14 +135,16 @@ systemctl restart phobos-panel
 
 Если PCA Phobos оказался полезен — буду благодарен за поддержку:
 
-- 💖 [Boosty](https://boosty.to/andrey27/donate)
-- ✉️ Telegram: [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, баги, идеи
+- 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
+- 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
+- ✉️ **Telegram:** [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, баги, идеи
 
 ## На основе и благодарности
 
 PCA Phobos — это веб-панель и turnkey-инсталлятор поверх:
 
 - [**Phobos**](https://github.com/Ground-Zerro/Phobos) (Ground-Zerro) — обфусцированный WireGuard. Поддержать автора: [Boosty](https://boosty.to/ground_zerro) ❤️
+- [**WireGuard Easy**](https://github.com/wg-easy/wg-easy) (Emile Nijssen, AGPL-3.0) — веб-панель WireGuard, на которой основан Phobos. Поддержать автора: [GitHub Sponsors](https://github.com/sponsors/WeeJeWel) ❤️
 - [**wg-obfuscator**](https://github.com/ClusterM/wg-obfuscator) (ClusterM) — обфускация WireGuard-трафика. Поддержать автора: [Boosty](https://boosty.to/cluster) ❤️
 
 Спасибо авторам за отличные инструменты.
