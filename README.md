@@ -169,7 +169,7 @@ phobos-update --list       # список бэкапов
 
 - 💖 **Boosty:** [boosty.to/andrey27/donate](https://boosty.to/andrey27/donate)
 - 💳 **Ozon Bank (СБП):** [ссылка](https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798)
-- ✉️ **Telegram:** [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, баги, идеи
+- ✉️ **Telegram:** [@PCAdministration](https://t.me/PCAdministration) — вопросы, баги, идеи
 
 ## На основе и благодарности
 
