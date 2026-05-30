@@ -77,15 +77,20 @@ bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main
 | `OBF_PORTS`       | `2083,5443,993` | Порты обфускатора |
 | `TG_TOKEN`/`TG_CHAT` | пусто        | Telegram-уведомления |
 | `ALLOW_PLAIN_WG`  | пусто           | `=1` открыть порт 51820 для iOS WireGuard (без обфускации) |
-| `CHANNEL`         | `stable`        | канал: `stable` (ветка main) или `beta` |
+| `CHANNEL`         | `stable`        | канал: `stable` (открытый) · `beta`/`dev` (под ключом `PHOBOS_KEY`) |
 
 После установки панель напечатает адрес, логин, пароль и **API key** — сохрани их.
 
-> **Канал:** по умолчанию ставится **стабильная** версия (ветка `main`). Бета — по желанию:
+> **Каналы:**
+> - **stable** — стабильная (ветка `main`), ставится **без ключа**, по умолчанию.
+> - **beta** — кандидат в релиз (тест), **под ключом** подписчика.
+> - **dev** — активная разработка (нестабильно), **под ключом** подписчика.
+>
+> Ключ `PHOBOS_KEY` выдаётся по подписке [Boosty](https://boosty.to/andrey27). Закрытый канал:
 > ```bash
-> CHANNEL=beta bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+> PHOBOS_KEY=ваш_ключ CHANNEL=dev bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
 > ```
-> Переключение после установки: `phobos-update beta` / `phobos-update main`.
+> Переключение после установки: `phobos-update stable` (без ключа) · `PHOBOS_KEY=... phobos-update beta|dev` · статус: `phobos-update --check`.
 
 ### Вторичный сервер (для failover / балансировки)
 
