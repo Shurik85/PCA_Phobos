@@ -2,24 +2,47 @@
 # ============================================================
 #  PCA Phobos — updater / rollback
 #
-#    phobos-update                 # обновить до последней версии (main)
-#    phobos-update v1.1.0          # обновить до конкретной версии (git tag)
+#    phobos-update                 # обновить до стабильной (канал stable / main)
+#    phobos-update stable          # стабильный канал (публичный, без токена)
+#    GH_TOKEN=... phobos-update beta   # бета-канал (приватный, по токену подписчика)
+#    GH_TOKEN=... phobos-update dev    # канал разработки (приватный, по токену)
+#    phobos-update v1.2.4          # конкретная версия (git tag)
 #    phobos-update --rollback      # откатить на предыдущую версию (из бэкапа)
-#    phobos-update --version       # показать установленную и последнюю версию
+#    phobos-update --check         # установленная + версии всех каналов
 #    phobos-update --list          # список бэкапов для отката
 #
-#  Обновляет ТОЛЬКО PCA-слой (панель + скрипты онбординга/служебные).
-#  НЕ трогает ключи WireGuard, server.env, клиентов — они сохраняются.
-#  Перед каждым обновлением делает бэкап; откат восстанавливает его.
+#  Каналы:
+#    stable -> публичный репозиторий andrey271192/PCA_Phobos  (открыт)
+#    beta / dev -> приватный andrey271192/PCA_Phobos-dev      (только подписчики)
+#  Для beta/dev нужен read-only токен подписчика: env GH_TOKEN или файл
+#  $PANEL_DIR/.gh_token (сохраняется при установке закрытого канала).
+#
+#  Обновляет ТОЛЬКО PCA-слой (панель + скрипты). НЕ трогает ключи WireGuard,
+#  server.env, клиентов. Перед каждым обновлением — бэкап; откат восстанавливает.
 # ============================================================
 set -e
 PHOBOS_DIR=/opt/Phobos
 PANEL_DIR=/opt/phobos-panel
-REPO=andrey271192/PCA_Phobos
-RAW="https://raw.githubusercontent.com/$REPO"
+PUB_REPO=andrey271192/PCA_Phobos
+DEV_REPO=andrey271192/PCA_Phobos-dev
 BACKUPS="$PHOBOS_DIR/updates"
 VERFILE="$PANEL_DIR/.version"
 CUR=$(cat "$VERFILE" 2>/dev/null || echo "unknown")
+# Токен подписчика для приватных каналов: env > сохранённый файл
+GH_TOKEN="${GH_TOKEN:-$(cat "$PANEL_DIR/.gh_token" 2>/dev/null || true)}"
+
+# repo for a ref/channel: beta/dev/*-beta/*-dev -> private, остальное -> public
+repo_for() { case "$1" in beta|dev|*-beta|*-dev) echo "$DEV_REPO";; *) echo "$PUB_REPO";; esac; }
+is_private() { case "$1" in beta|dev|*-beta|*-dev) return 0;; *) return 1;; esac; }
+# curl with token header only when ref is a private channel
+gh_curl() {  # $1=ref, rest=curl args
+    local ref="$1"; shift
+    if is_private "$ref" && [ -n "$GH_TOKEN" ]; then
+        curl -H "Authorization: token $GH_TOKEN" "$@"
+    else
+        curl "$@"
+    fi
+}
 
 managed_files() {
 cat <<LIST
@@ -35,7 +58,13 @@ $PHOBOS_DIR/server/update.sh|update.sh
 LIST
 }
 
-latest_version() { curl -fsSL -m10 "$RAW/main/VERSION" 2>/dev/null | tr -d ' \r\n'; }
+# fetch VERSION of a channel (public repos / or private if token present)
+chan_version() {  # $1 = ref(channel)
+    local repo; repo=$(repo_for "$1"); local repo_ref="$1"
+    if is_private "$1" && [ -z "$GH_TOKEN" ]; then echo ""; return; fi
+    gh_curl "$1" -fsSL -m8 "https://raw.githubusercontent.com/$repo/$1/VERSION" 2>/dev/null | tr -d ' \r\n'
+}
+latest_version() { curl -fsSL -m10 "https://raw.githubusercontent.com/$PUB_REPO/main/VERSION" 2>/dev/null | tr -d ' \r\n'; }
 
 do_backup() {
     local dir="$BACKUPS/${CUR}-$(date +%Y%m%d-%H%M%S)"
@@ -48,10 +77,12 @@ do_backup() {
 }
 
 apply_ref() {
-    local ref="$1"
+    local ref="$1"; local repo; repo=$(repo_for "$ref")
+    local repo_ref="$ref"
+    local RAW="https://raw.githubusercontent.com/$repo/$ref"
     managed_files | while IFS='|' read -r lp rp; do
         local tmp; tmp=$(mktemp)
-        if curl -fsSL -m25 "$RAW/$ref/$rp" -o "$tmp" && [ -s "$tmp" ]; then
+        if gh_curl "$ref" -fsSL -m25 "$RAW/$rp" -o "$tmp" && [ -s "$tmp" ]; then
             mkdir -p "$(dirname "$lp")"; mv "$tmp" "$lp"
             case "$lp" in *.sh|*.py) chmod +x "$lp" 2>/dev/null || true;; esac
         else
@@ -60,21 +91,33 @@ apply_ref() {
     done
 }
 
-ref_exists() { curl -fsSL -m12 "$RAW/$1/app.py" -o /dev/null 2>/dev/null; }
+ref_exists() {
+    local repo; repo=$(repo_for "$1"); local repo_ref="$1"
+    gh_curl "$1" -fsSL -m12 "https://raw.githubusercontent.com/$repo/$1/app.py" -o /dev/null 2>/dev/null
+}
 
 case "${1:-}" in
   --version|-v|--check)
     echo "Установлено:    $CUR"
-    echo "Стабильная:     $(latest_version)"
-    beta=$(curl -fsSL -m8 "$RAW/beta/VERSION" 2>/dev/null | tr -d ' \r\n')
-    [ -n "$beta" ] && echo "Бета (beta):    $beta   [закрыт ключом]"
-    dev=$(curl -fsSL -m8 "$RAW/dev/VERSION" 2>/dev/null | tr -d ' \r\n')
-    [ -n "$dev" ] && echo "Разработка(dev):$dev   [закрыт ключом]"
+    echo "Стабильная:     $(latest_version)   [открытый]"
+    b=$(chan_version beta); d=$(chan_version dev)
+    if [ -n "$GH_TOKEN" ]; then
+        [ -n "$b" ] && echo "Бета (beta):    $b   [приватный, токен ок]"
+        [ -n "$d" ] && echo "Разработка(dev):$d   [приватный, токен ок]"
+    else
+        echo "Бета (beta):    —   [приватный: нужен GH_TOKEN подписчика]"
+        echo "Разработка(dev):—   [приватный: нужен GH_TOKEN подписчика]"
+    fi
     ;;
   --versions|--tags)
-    echo "Доступные версии (git tags):"
-    curl -fsSL -m10 "https://api.github.com/repos/$REPO/tags?per_page=100" 2>/dev/null \
+    echo "Стабильные версии (публичные теги):"
+    curl -fsSL -m10 "https://api.github.com/repos/$PUB_REPO/tags?per_page=100" 2>/dev/null \
       | grep -oE '"name": *"[^"]+"' | sed 's/.*"name": *"\(.*\)"/  \1/' || echo "  (нет данных)"
+    if [ -n "$GH_TOKEN" ]; then
+        echo "Закрытые версии (приватные теги, beta/dev):"
+        curl -fsSL -m10 -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$DEV_REPO/tags?per_page=100" 2>/dev/null \
+          | grep -oE '"name": *"[^"]+"' | sed 's/.*"name": *"\(.*\)"/  \1/' || echo "  (нет данных)"
+    fi
     ;;
   --list)
     echo "Бэкапы (для отката):"
@@ -95,24 +138,25 @@ case "${1:-}" in
   *)
     ref="${1:-main}"
     case "$ref" in latest|stable) ref="main";; esac
-    # Каналы beta/dev закрыты ключом подписчика PHOBOS_KEY (Boosty)
-    case "$ref" in
-      beta|dev|*-beta|*-dev)
-        _got=$(printf %s "${PHOBOS_KEY:-}" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)
-        if [ "$_got" != "cb3ce498b8d2c67ec7b57a9b08ed2fb410c881bcb9bc9cf50d09be1d9727333a" ]; then
-            echo "Канал '$ref' закрыт (бета/разработка). Нужен ключ подписчика:"
-            echo "  PHOBOS_KEY=ваш_ключ phobos-update $ref"
-            echo "Ключ — по подписке: https://boosty.to/andrey27 . Стабильная: phobos-update stable"
-            exit 1
-        fi
-        ;;
-    esac
+    # Каналы beta/dev — приватный репозиторий, нужен токен подписчика
+    if is_private "$ref" && [ -z "$GH_TOKEN" ]; then
+        echo "Канал '$ref' закрыт (бета/разработка) — приватный репозиторий."
+        echo "Нужен read-only токен подписчика:"
+        echo "  GH_TOKEN=ваш_токен phobos-update $ref"
+        echo "Токен — по подписке: https://boosty.to/andrey27 . Стабильная (без токена): phobos-update stable"
+        exit 1
+    fi
     if ! ref_exists "$ref"; then
-        echo "Версия/ветка '$ref' не найдена на GitHub. Обновление отменено (текущая $CUR не тронута)."
+        echo "Версия/ветка '$ref' не найдена (или токен неверный). Обновление отменено (текущая $CUR не тронута)."
         echo "Доступные: phobos-update --versions  ·  стабильная: $(latest_version)"
         exit 1
     fi
-    target=$(curl -fsSL -m10 "$RAW/$ref/VERSION" 2>/dev/null | tr -d ' \r\n'); [ -z "$target" ] && target="$ref"
+    # сохранить токен для будущих обновлений приватного канала
+    if is_private "$ref" && [ -n "$GH_TOKEN" ]; then
+        ( umask 077; printf %s "$GH_TOKEN" > "$PANEL_DIR/.gh_token" )
+    fi
+    repo_ref="$ref"
+    target=$(gh_curl "$ref" -fsSL -m10 "https://raw.githubusercontent.com/$(repo_for "$ref")/$ref/VERSION" 2>/dev/null | tr -d ' \r\n'); [ -z "$target" ] && target="$ref"
     echo "Текущая: $CUR  ->  целевая: $target  ($ref)"
     b=$(do_backup); echo "Бэкап: $b"
     apply_ref "$ref"

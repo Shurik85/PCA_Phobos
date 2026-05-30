@@ -25,31 +25,31 @@ PANEL_PASS="${PANEL_PASS:-OcAdmin2026!}"
 TG_TOKEN="${TG_TOKEN:-}"
 TG_CHAT="${TG_CHAT:-}"
 OBF_PORTS="${OBF_PORTS:-2083,5443,993}"
-# Каналы: stable (открытый, ветка main) · beta (тест) · dev (разработка).
-# beta и dev ЗАКРЫТЫ ключом подписчика PHOBOS_KEY (по подписке Boosty). stable — без ключа.
+# Каналы: stable (открытый, публичный repo) · beta (тест) · dev (разработка).
+# beta и dev живут в ПРИВАТНОМ repo PCA_Phobos-dev — доступ по токену подписчика
+# (GH_TOKEN, read-only, выдаётся по подписке Boosty). stable — без токена.
+GH_TOKEN="${GH_TOKEN:-}"
+PUB_REPO="andrey271192/PCA_Phobos"
+DEV_REPO="andrey271192/PCA_Phobos-dev"
 CHANNEL="${CHANNEL:-stable}"
-if [ -z "${PCA_BRANCH:-}" ]; then
-    case "$CHANNEL" in beta) PCA_BRANCH="beta";; dev) PCA_BRANCH="dev";; stable|main|"") PCA_BRANCH="main";; *) PCA_BRANCH="$CHANNEL";; esac
-fi
-PHOBOS_KEY_HASH="cb3ce498b8d2c67ec7b57a9b08ed2fb410c881bcb9bc9cf50d09be1d9727333a"
-case "$PCA_BRANCH" in
-  beta|dev)
-    _got=$(printf %s "${PHOBOS_KEY:-}" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)
-    if [ "$_got" != "$PHOBOS_KEY_HASH" ]; then
-        echo "Канал '$CHANNEL' закрыт — это $([ "$CHANNEL" = dev ] && echo 'разработка (нестабильно)' || echo 'бета (тест)')."
-        echo "Нужен ключ подписчика:"
-        echo "  PHOBOS_KEY=ваш_ключ CHANNEL=$CHANNEL bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)"
-        echo "Ключ выдаётся по подписке: https://boosty.to/andrey27"
-        echo "Стабильная версия ставится без ключа (CHANNEL=stable, по умолчанию)."
-        exit 1
-    fi
-    echo "Ключ принят — канал '$CHANNEL'."
-    ;;
+case "$CHANNEL" in
+  beta) REPO="$DEV_REPO"; PCA_BRANCH="${PCA_BRANCH:-beta}";;
+  dev)  REPO="$DEV_REPO"; PCA_BRANCH="${PCA_BRANCH:-dev}";;
+  stable|main|"") REPO="$PUB_REPO"; PCA_BRANCH="${PCA_BRANCH:-main}";;
+  *)    REPO="$PUB_REPO"; PCA_BRANCH="${PCA_BRANCH:-$CHANNEL}";;
 esac
-GH_TOKEN="${GH_TOKEN:-}"   # set for private-repo installs; empty for public
+if [ "$REPO" = "$DEV_REPO" ] && [ -z "$GH_TOKEN" ]; then
+    echo "Канал '$CHANNEL' закрыт — это $([ "$CHANNEL" = dev ] && echo 'разработка (нестабильно)' || echo 'бета (тест)'), приватный репозиторий."
+    echo "Нужен read-only токен подписчика:"
+    echo "  GH_TOKEN=ваш_токен CHANNEL=$CHANNEL bash <(curl -fsSL https://raw.githubusercontent.com/$PUB_REPO/main/install.sh)"
+    echo "Токен выдаётся по подписке: https://boosty.to/andrey27"
+    echo "Стабильная версия ставится без токена (CHANNEL=stable, по умолчанию)."
+    exit 1
+fi
+[ "$REPO" = "$DEV_REPO" ] && echo "Токен принят — закрытый канал '$CHANNEL' (приватный repo)."
 PHOBOS_DIR="/opt/Phobos"
 PANEL_DIR="/opt/phobos-panel"
-RAW="https://raw.githubusercontent.com/andrey271192/PCA_Phobos/${PCA_BRANCH}"
+RAW="https://raw.githubusercontent.com/${REPO}/${PCA_BRANCH}"
 
 [ "$EUID" -eq 0 ] || { echo "Run as root"; exit 1; }
 
@@ -260,6 +260,13 @@ if [ -f "$PHOBOS_DIR/server/phobos-router-watchdog.py" ]; then
 fi
 
 sleep 2
+# persist channel + subscriber token so phobos-update can reach private channels
+mkdir -p "$PANEL_DIR"
+echo "$CHANNEL" > "$PANEL_DIR/.channel" 2>/dev/null || true
+if [ "$REPO" = "$DEV_REPO" ] && [ -n "$GH_TOKEN" ]; then
+    ( umask 077; printf %s "$GH_TOKEN" > "$PANEL_DIR/.gh_token" )
+fi
+
 echo ""
 echo "============================================"
 echo "  Installation complete"
