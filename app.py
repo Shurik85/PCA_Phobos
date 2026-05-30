@@ -129,10 +129,65 @@ def delete_client_cli(cid):
     return True, "\U0001F5D1 Клиент <b>%s</b> удалён." % cid
 
 
-def telegram_bot():
-    """Poll Telegram getUpdates; allow the admin chat to /add, /del, /list clients."""
+def tg_api(method, payload, token=None):
     import urllib.request
+    if token is None:
+        token = load_settings().get("tg_bot_token", "")
+    if not token:
+        return None
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request("https://api.telegram.org/bot%s/%s" % (token, method),
+                                     data=data, headers={"Content-Type": "application/json"})
+        return json.loads(urllib.request.urlopen(req, timeout=15).read())
+    except Exception:
+        return None
+
+
+MAIN_KB = {
+    "keyboard": [
+        ["➕ Создать клиента", "\U0001F4CB Список"],
+        ["\U0001F5D1 Удалить", "\U0001F4CA Статус"],
+        ["❓ Помощь"],
+    ],
+    "resize_keyboard": True,
+}
+
+_bot_state = {}
+
+
+def _bot_status_text():
+    servers = [{"ip": SERVER_IP, "is_primary": True}] + load_servers()
+    lines = ["\U0001F4CA <b>Серверы</b>:"]
+    for sv in servers:
+        ip = sv.get("ip", "")
+        st = "ok" if ip == SERVER_IP else server_stats_cache.get(ip, {}).get("status", "?")
+        emoji = "\U0001F7E2" if st == "ok" else ("\U0001F534" if st == "down" else "⚪")
+        lines.append("%s %s%s" % (emoji, ip, " (primary)" if sv.get("is_primary") else ""))
+    online = set()
+    try:
+        for p, info in get_wg_peers().items():
+            if is_peer_online(info.get("latest handshake", "")):
+                online.add(p)
+        for _ip, hs in server_handshakes_cache.items():
+            for p, tsv in hs.items():
+                if tsv and (time.time() - tsv) < 180:
+                    online.add(p)
+    except Exception:
+        pass
+    lines.append("\n\U0001F4F1 <b>Клиенты</b>:")
+    cl = get_clients()
+    if not cl:
+        lines.append("нет")
+    for c in cl:
+        on = c.get("public_key", "") in online
+        lines.append(("\U0001F7E2 " if on else "⚪ ") + c.get("client_id", ""))
+    return "\n".join(lines)
+
+
+def telegram_bot():
     offset = 0
+    import urllib.request
     while True:
         try:
             s = load_settings()
@@ -144,35 +199,67 @@ def telegram_bot():
             data = json.loads(urllib.request.urlopen(url, timeout=40).read())
             for upd in data.get("result", []):
                 offset = upd["update_id"] + 1
+                cq = upd.get("callback_query")
+                if cq:
+                    if str(cq.get("message", {}).get("chat", {}).get("id", "")) != chat:
+                        continue
+                    cdata = cq.get("data", "")
+                    if cdata.startswith("del:"):
+                        _, rep = delete_client_cli(cdata[4:])
+                        tg_api("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "OK"})
+                        tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
+                    continue
                 m = upd.get("message") or upd.get("channel_post")
                 if not m:
                     continue
                 if str(m.get("chat", {}).get("id", "")) != chat:
                     continue
                 text = (m.get("text") or "").strip()
-                if not text.startswith("/"):
+                if not text:
                     continue
-                parts = text.split()
-                cmd = parts[0].split("@")[0].lower()
-                arg = parts[1] if len(parts) > 1 else ""
-                if cmd in ("/add", "/new", "/create"):
-                    reply = "Использование: /add <имя>" if not arg else create_client_cli(arg)[1]
-                elif cmd in ("/del", "/delete", "/remove", "/rm"):
-                    reply = "Использование: /del <имя>" if not arg else delete_client_cli(arg)[1]
-                elif cmd in ("/list", "/ls"):
-                    cls = [c.get("client_id", "") for c in get_clients()]
-                    reply = ("Клиенты (%d):\n" % len(cls)) + "\n".join("\u2022 " + c for c in cls) if cls else "Клиентов нет."
-                elif cmd in ("/help", "/start"):
-                    reply = ("Команды PCA Phobos:\n"
-                             "/add <имя> — создать клиента\n"
-                             "/del <имя> — удалить клиента\n"
-                             "/list — список клиентов")
-                else:
+                low = text.lower()
+                if _bot_state.get(chat) == "add" and not text.startswith("/"):
+                    _bot_state.pop(chat, None)
+                    _, rep = create_client_cli(text)
+                    tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
                     continue
-                tg_send(reply)
+                toks = text.split()
+                cmd = toks[0].split("@")[0].lower()
+                arg = toks[1] if len(toks) > 1 else ""
+                if text.startswith("➕") or cmd in ("/add", "/new", "/create"):
+                    if arg:
+                        _, rep = create_client_cli(arg)
+                        tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
+                    else:
+                        _bot_state[chat] = "add"
+                        tg_api("sendMessage", {"chat_id": chat, "text": "Введите имя нового клиента (латиница, цифры, _ и -):"})
+                elif text.startswith("\U0001F5D1") or cmd in ("/del", "/delete", "/remove", "/rm"):
+                    if arg:
+                        _, rep = delete_client_cli(arg)
+                        tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
+                    else:
+                        cl = get_clients()
+                        if not cl:
+                            tg_api("sendMessage", {"chat_id": chat, "text": "Клиентов нет.", "reply_markup": MAIN_KB})
+                        else:
+                            kb = {"inline_keyboard": [[{"text": "\U0001F5D1 " + c.get("client_id", ""), "callback_data": "del:" + c.get("client_id", "")}] for c in cl]}
+                            tg_api("sendMessage", {"chat_id": chat, "text": "Кого удалить?", "reply_markup": kb})
+                elif text.startswith("\U0001F4CB") or cmd in ("/list", "/ls"):
+                    cl = [c.get("client_id", "") for c in get_clients()]
+                    rep = ("Клиенты (%d):\n" % len(cl)) + "\n".join("• " + c for c in cl) if cl else "Клиентов нет."
+                    tg_api("sendMessage", {"chat_id": chat, "text": rep, "reply_markup": MAIN_KB})
+                elif text.startswith("\U0001F4CA") or cmd in ("/status", "/stat"):
+                    tg_api("sendMessage", {"chat_id": chat, "text": _bot_status_text(), "parse_mode": "HTML", "reply_markup": MAIN_KB})
+                elif text.startswith("❓") or cmd in ("/help", "/start"):
+                    rep = ("<b>PCA Phobos — бот</b>\n\n"
+                           "Кнопки внизу или команды:\n"
+                           "➕ /add &lt;имя&gt; — создать клиента\n"
+                           "\U0001F5D1 /del &lt;имя&gt; — удалить\n"
+                           "\U0001F4CB /list — список\n"
+                           "\U0001F4CA /status — статус")
+                    tg_api("sendMessage", {"chat_id": chat, "text": rep, "parse_mode": "HTML", "reply_markup": MAIN_KB})
         except Exception:
             time.sleep(10)
-
 
 def get_wg_peers():
     """Parse `wg show wg0` to get active peers with transfer/handshake info."""
