@@ -72,6 +72,108 @@ def tg_send(text):
         pass
 
 
+def notify_on(cid):
+    return load_settings().get("client_notify", {}).get(cid, True)
+
+
+def create_client_cli(name):
+    """Create a client (add + assign + fanout + install link). Returns (ok, html_msg). Used by web + Telegram bot."""
+    import re as _re
+    name = (name or "").strip()
+    if not name or not _re.match(r"^[a-zA-Z0-9_-]+$", name):
+        return False, "Имя: латиница, цифры, _ и - (без пробелов)."
+    if os.path.isdir(os.path.join(CLIENTS_DIR, name)):
+        return False, "Клиент %s уже существует." % name
+    script = "%s/repo/server/scripts/phobos-client.sh" % PHOBOS_DIR
+    try:
+        subprocess.check_output([script, "add", name], text=True, timeout=45,
+                                stderr=subprocess.STDOUT, env={**os.environ, **_load_server_env()})
+    except subprocess.CalledProcessError as e:
+        return False, "Ошибка создания: %s" % (e.output or "")[-300:]
+    try:
+        auto_assign_server(name); fanout_router_config(name)
+    except Exception:
+        pass
+    cmd = ""
+    try:
+        out = subprocess.check_output([script, "link", name], text=True, timeout=25,
+                                      stderr=subprocess.STDOUT, env={**os.environ, **_load_server_env()})
+        for ln in out.splitlines():
+            if ln.strip().startswith("curl") or "/init/" in ln:
+                cmd = ln.strip(); break
+    except Exception:
+        pass
+    msg = "\u2705 Клиент <b>%s</b> создан." % name
+    if cmd:
+        msg += "\n\nКоманда установки на роутер:\n<code>%s</code>" % cmd
+    return True, msg
+
+
+def delete_client_cli(cid):
+    cid = (cid or "").strip()
+    if not cid or not os.path.isdir(os.path.join(CLIENTS_DIR, cid)):
+        return False, "Клиент %s не найден." % cid
+    script = "%s/repo/server/scripts/phobos-client.sh" % PHOBOS_DIR
+    try:
+        subprocess.check_output([script, "remove", cid], text=True, timeout=25,
+                                stderr=subprocess.STDOUT, env={**os.environ, **_load_server_env()})
+    except subprocess.CalledProcessError as e:
+        return False, "Ошибка удаления: %s" % (e.output or "")[-300:]
+    try:
+        st = load_settings()
+        st.get("client_assignments", {}).pop(cid, None)
+        st.get("client_notify", {}).pop(cid, None)
+        save_settings(st)
+    except Exception:
+        pass
+    return True, "\U0001F5D1 Клиент <b>%s</b> удалён." % cid
+
+
+def telegram_bot():
+    """Poll Telegram getUpdates; allow the admin chat to /add, /del, /list clients."""
+    import urllib.request
+    offset = 0
+    while True:
+        try:
+            s = load_settings()
+            token = s.get("tg_bot_token", "")
+            chat = str(s.get("tg_chat_id", ""))
+            if not token or not chat:
+                time.sleep(15); continue
+            url = "https://api.telegram.org/bot%s/getUpdates?timeout=30&offset=%d" % (token, offset)
+            data = json.loads(urllib.request.urlopen(url, timeout=40).read())
+            for upd in data.get("result", []):
+                offset = upd["update_id"] + 1
+                m = upd.get("message") or upd.get("channel_post")
+                if not m:
+                    continue
+                if str(m.get("chat", {}).get("id", "")) != chat:
+                    continue
+                text = (m.get("text") or "").strip()
+                if not text.startswith("/"):
+                    continue
+                parts = text.split()
+                cmd = parts[0].split("@")[0].lower()
+                arg = parts[1] if len(parts) > 1 else ""
+                if cmd in ("/add", "/new", "/create"):
+                    reply = "Использование: /add <имя>" if not arg else create_client_cli(arg)[1]
+                elif cmd in ("/del", "/delete", "/remove", "/rm"):
+                    reply = "Использование: /del <имя>" if not arg else delete_client_cli(arg)[1]
+                elif cmd in ("/list", "/ls"):
+                    cls = [c.get("client_id", "") for c in get_clients()]
+                    reply = ("Клиенты (%d):\n" % len(cls)) + "\n".join("\u2022 " + c for c in cls) if cls else "Клиентов нет."
+                elif cmd in ("/help", "/start"):
+                    reply = ("Команды PCA Phobos:\n"
+                             "/add <имя> — создать клиента\n"
+                             "/del <имя> — удалить клиента\n"
+                             "/list — список клиентов")
+                else:
+                    continue
+                tg_send(reply)
+        except Exception:
+            time.sleep(10)
+
+
 def get_wg_peers():
     """Parse `wg show wg0` to get active peers with transfer/handshake info."""
     try:
@@ -554,13 +656,15 @@ def session_monitor():
                     client_id, real_ip = key
                     label = labels.get(real_ip, "")
                     name = f"{label} ({real_ip})" if label else real_ip
-                    tg_send(f"🟢 <b>{client_id}</b> connected — {name}")
+                    if notify_on(client_id):
+                        tg_send(f"🟢 <b>{client_id}</b> connected — {name}")
 
                 for key in prev_session_keys - current_keys:
                     client_id, real_ip = key
                     label = labels.get(real_ip, "")
                     name = f"{label} ({real_ip})" if label else real_ip
-                    tg_send(f"🔴 <b>{client_id}</b> disconnected — {name}")
+                    if notify_on(client_id):
+                        tg_send(f"🔴 <b>{client_id}</b> disconnected — {name}")
 
             prev_session_keys = current_keys
 
@@ -599,6 +703,8 @@ def session_monitor():
 
 monitor_thread = threading.Thread(target=session_monitor, daemon=True)
 monitor_thread.start()
+bot_thread = threading.Thread(target=telegram_bot, daemon=True)
+bot_thread.start()
 
 
 PAGE = """<!DOCTYPE html>
@@ -874,6 +980,15 @@ def clients_page():
                 except subprocess.CalledProcessError as e:
                     msg = f'<div class="alert alert-error">{e.output}</div>'
 
+        elif action == "toggle_notify":
+            client_id = request.form.get("client_id", "").strip()
+            if client_id:
+                cn = s.setdefault("client_notify", {})
+                cn[client_id] = not cn.get(client_id, True)
+                save_settings(s)
+                st = "вкл" if cn[client_id] else "выкл"
+                msg = f'<div class="alert alert-ok">Уведомления {client_id}: {st}</div>'
+
         elif action == "set_expiry":
             client_id = request.form.get("client_id", "").strip()
             expiry = request.form.get("expiry", "").strip()
@@ -938,6 +1053,7 @@ def clients_page():
 
     all_srv = get_all_servers_ordered()
     assignments = s.get("client_assignments", {})
+    assignments_notify = s.get("client_notify", {})
     # Online = fresh handshake on ANY server (truthful during failover/transition)
     online_all = set(online_pubs)
     for _sv in all_srv:
@@ -991,6 +1107,10 @@ def clients_page():
         h_del = hlp("Безвозвратно удалить клиента, его ключи и конфигурацию. Отменить нельзя.",
                     "Permanently delete the client, its keys and config. Cannot be undone.")
         del_confirm = tr("Удалить " + cid + "?", "Delete " + cid + "?")
+        _notify = assignments_notify.get(cid, True)
+        notify_icon = "🔔" if _notify else "🔕"
+        notify_bg = "#4f46e5" if _notify else "#64748b"
+        notify_ttl = tr("Уведомления в Telegram включены — нажми, чтобы выключить", "Telegram notifications ON — click to turn off") if _notify else tr("Уведомления выключены — нажми, чтобы включить", "Notifications OFF — click to turn on")
         rows += f"""<tr>
         <td>{cid}</td>
         <td>{ip}</td>
@@ -1015,6 +1135,11 @@ def clients_page():
             </form>
         </td>
         <td style="display:flex;gap:4px;align-items:center">
+            <form method="post" title="{notify_ttl}">
+            <input type="hidden" name="action" value="toggle_notify">
+            <input type="hidden" name="client_id" value="{cid}">
+            <button class="btn btn-sm" style="background:{notify_bg}" type="submit">{notify_icon}</button>
+            </form>
             <form method="post" onsubmit="return confirm('{del_confirm}')">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="client_id" value="{cid}">
