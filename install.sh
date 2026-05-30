@@ -26,6 +26,7 @@ TG_TOKEN="${TG_TOKEN:-}"
 TG_CHAT="${TG_CHAT:-}"
 OBF_PORTS="${OBF_PORTS:-2083,5443,993}"
 PCA_BRANCH="${PCA_BRANCH:-main}"
+GH_TOKEN="${GH_TOKEN:-}"   # set for private-repo installs; empty for public
 PHOBOS_DIR="/opt/Phobos"
 PANEL_DIR="/opt/phobos-panel"
 RAW="https://raw.githubusercontent.com/andrey271192/PCA_Phobos/${PCA_BRANCH}"
@@ -150,7 +151,14 @@ EOF
 
 # ── 6. PCA patches over onboarding scripts + server-side helpers ──
 echo "[6/9] PCA patches (tunnel-pull, self-heal, watchdog, 403 fix)..."
-fetch() { curl -fsSL -m20 "$RAW/$1" -o "$2" && return 0; echo "  WARN: fetch $1 failed"; return 1; }
+fetch() {
+    if [ -n "$GH_TOKEN" ]; then
+        curl -fsSL -m20 -H "Authorization: token $GH_TOKEN" "$RAW/$1" -o "$2" && return 0
+    else
+        curl -fsSL -m20 "$RAW/$1" -o "$2" && return 0
+    fi
+    echo "  WARN: fetch $1 failed"; return 1
+}
 fetch overlay/phobos-client.sh                 "$PHOBOS_DIR/repo/server/scripts/phobos-client.sh"        && chmod +x "$PHOBOS_DIR/repo/server/scripts/phobos-client.sh"
 fetch overlay/install-router.sh.template       "$PHOBOS_DIR/repo/client/templates/install-router.sh.template"
 fetch overlay/router-configure-wireguard.sh    "$PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh" && chmod +x "$PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh"
