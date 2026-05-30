@@ -128,3 +128,21 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/app.py
 systemctl restart phobos-panel
 ```
 
+
+---
+
+## Поддержка проекта
+
+Если PCA Phobos оказался полезен — буду благодарен за поддержку:
+
+- 💖 [Boosty](https://boosty.to/andrey27/donate)
+- ✉️ Telegram: [@Iot_andrey](https://t.me/Iot_andrey) — вопросы, баги, идеи
+
+## На основе и благодарности
+
+PCA Phobos — это веб-панель и turnkey-инсталлятор поверх:
+
+- [**Phobos**](https://github.com/Ground-Zerro/Phobos) (Ground-Zerro) — обфусцированный WireGuard. Поддержать автора: [Boosty](https://boosty.to/ground_zerro) ❤️
+- [**wg-obfuscator**](https://github.com/ClusterM/wg-obfuscator) (ClusterM) — обфускация WireGuard-трафика. Поддержать автора: [Boosty](https://boosty.to/cluster) ❤️
+
+Спасибо авторам за отличные инструменты.

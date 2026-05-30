@@ -600,7 +600,8 @@ input:focus{outline:none;border-color:#4f46e5}
 </div>
 CONTENT
 <div class="footer">
-Phobos VPN Panel
+Phobos VPN Panel · <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener">💖 Поддержать</a> · <a href="https://t.me/Iot_andrey" target="_blank" rel="noopener">✉️ Telegram</a><br>
+<span style="font-size:.92em;color:#475569">На основе <a href="https://github.com/Ground-Zerro/Phobos" target="_blank" rel="noopener">Phobos</a> · <a href="https://boosty.to/ground_zerro" target="_blank" rel="noopener">поддержать автора</a></span>
 </div>
 <script>
 function showHelp(el){var b=el.nextElementSibling; if(b&&b.classList.contains('help-box')){b.classList.toggle('show');}}
