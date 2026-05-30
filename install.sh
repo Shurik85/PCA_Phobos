@@ -221,11 +221,12 @@ server {
     listen [::]:80 default_server;
     location /init/     { alias /opt/Phobos/www/init/;     default_type application/x-sh; }
     location /packages/ { alias /opt/Phobos/www/packages/; default_type application/octet-stream; }
+    location /app/      { alias /opt/Phobos/www/app/;      default_type application/octet-stream; }
     location / { return 404; }
 }
 NGINX
 ln -sf /etc/nginx/sites-available/phobos /etc/nginx/sites-enabled/phobos
-chmod 755 /opt/Phobos/www /opt/Phobos/www/init /opt/Phobos/www/packages
+mkdir -p /opt/Phobos/www/app; chmod 755 /opt/Phobos/www /opt/Phobos/www/init /opt/Phobos/www/packages /opt/Phobos/www/app
 nginx -t >/dev/null 2>&1 && systemctl enable nginx -q 2>/dev/null && systemctl restart nginx || echo "  WARN: nginx config test failed"
 
 # ── 9. router watchdog (auto reboot-recovery) ──

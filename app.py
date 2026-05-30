@@ -1307,11 +1307,17 @@ def client_phone(cid, mode):
     qr = qr_datauri(link if (mode == "android" and link) else conf)
     if mode == "android":
         title = tr("Android — PhobosWG (с обфускацией)", "Android — PhobosWG (obfuscated)")
-        extra = (f'<p>{tr("phobos:// ссылка — импорт в PhobosWG:", "phobos:// link — import into PhobosWG:")}</p>'
+        apk_btn = ""
+        if os.path.exists("/opt/Phobos/www/app/PhobosWG.apk"):
+            apk_btn = (f'<p style="margin-top:6px"><a href="http://{SERVER_IP}/app/PhobosWG.apk" '
+                       f'class="btn btn-primary" style="background:#16a34a">📥 {tr("Скачать приложение PhobosWG (APK)","Download PhobosWG app (APK)")}</a></p>')
+        extra = (apk_btn +
+                 f'<p>{tr("phobos:// ссылка — импорт в PhobosWG:", "phobos:// link — import into PhobosWG:")}</p>'
                  f'<textarea readonly onclick="this.select()" style="width:100%;height:90px;font-size:.75em">{link}</textarea>')
     else:
         title = tr("iPhone / iOS WireGuard (без обфускации)", "iPhone / iOS WireGuard (plain, no obfuscation)")
-        extra = (f'<p style="color:#fcd34d">{tr("⚠ Обычный WireGuard без маскировки (Endpoint → :51820). На сервере должен быть открыт порт 51820.", "⚠ Plain WireGuard, no obfuscation (Endpoint → :51820). Port 51820 must be open on the server.")}</p>')
+        extra = (f'<p><a href="https://apps.apple.com/app/wireguard/id1441195209" target="_blank" rel="noopener" class="btn btn-primary" style="background:#0ea5e9">📥 {tr("WireGuard в App Store","WireGuard on the App Store")}</a></p>'
+                 f'<p style="color:#fcd34d">{tr("⚠ Обычный WireGuard без маскировки (Endpoint → :51820). На сервере должен быть открыт порт 51820 (ALLOW_PLAIN_WG=1).", "⚠ Plain WireGuard, no obfuscation (Endpoint → :51820). Port 51820 must be open on the server (ALLOW_PLAIN_WG=1).")}</p>')
     html = f"""
     <div class="container">
     {nav('clients')}
