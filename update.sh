@@ -67,7 +67,9 @@ case "${1:-}" in
     echo "Установлено:    $CUR"
     echo "Стабильная:     $(latest_version)"
     beta=$(curl -fsSL -m8 "$RAW/beta/VERSION" 2>/dev/null | tr -d ' \r\n')
-    [ -n "$beta" ] && echo "Бета (beta):    $beta"
+    [ -n "$beta" ] && echo "Бета (beta):    $beta   [закрыт ключом]"
+    dev=$(curl -fsSL -m8 "$RAW/dev/VERSION" 2>/dev/null | tr -d ' \r\n')
+    [ -n "$dev" ] && echo "Разработка(dev):$dev   [закрыт ключом]"
     ;;
   --versions|--tags)
     echo "Доступные версии (git tags):"
@@ -91,7 +93,20 @@ case "${1:-}" in
     echo "Откат выполнен -> $fromver"
     ;;
   *)
-    ref="${1:-main}"; [ "$ref" = "latest" ] && ref="main"
+    ref="${1:-main}"
+    case "$ref" in latest|stable) ref="main";; esac
+    # Каналы beta/dev закрыты ключом подписчика PHOBOS_KEY (Boosty)
+    case "$ref" in
+      beta|dev|*-beta|*-dev)
+        _got=$(printf %s "${PHOBOS_KEY:-}" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1)
+        if [ "$_got" != "cb3ce498b8d2c67ec7b57a9b08ed2fb410c881bcb9bc9cf50d09be1d9727333a" ]; then
+            echo "Канал '$ref' закрыт (бета/разработка). Нужен ключ подписчика:"
+            echo "  PHOBOS_KEY=ваш_ключ phobos-update $ref"
+            echo "Ключ — по подписке: https://boosty.to/andrey27 . Стабильная: phobos-update stable"
+            exit 1
+        fi
+        ;;
+    esac
     if ! ref_exists "$ref"; then
         echo "Версия/ветка '$ref' не найдена на GitHub. Обновление отменено (текущая $CUR не тронута)."
         echo "Доступные: phobos-update --versions  ·  стабильная: $(latest_version)"
