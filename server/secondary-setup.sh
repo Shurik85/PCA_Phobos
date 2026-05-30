@@ -238,98 +238,15 @@ EOF
 
 # ── 6. Mini-API ──
 echo "[6/7] Setting up mini-API..."
-cat > "$PHOBOS_DIR/server/api.py" << 'PYEOF'
-#!/usr/bin/env python3
-"""Phobos Secondary Server API — peer management + health."""
-import json, os, subprocess
-from flask import Flask, request, jsonify
-
-app = Flask(__name__)
-
-def load_env():
-    env = {}
-    with open("/opt/Phobos/server/server.env") as f:
-        for line in f:
-            if "=" in line and not line.startswith("#"):
-                k, v = line.strip().split("=", 1)
-                env[k] = v
-    return env
-
-def check_api_key():
-    env = load_env()
-    key = request.headers.get("X-API-Key", "")
-    return key == env.get("MAIN_API_KEY", "")
-
-@app.route("/api/health")
-def health():
-    try:
-        wg = subprocess.check_output(["wg", "show", "wg0"], text=True, timeout=5)
-        peers = wg.count("peer:")
-        return jsonify({"status": "ok", "peers": peers})
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-@app.route("/api/peers", methods=["GET"])
-def list_peers():
-    if not check_api_key():
-        return jsonify({"error": "unauthorized"}), 401
-    try:
-        out = subprocess.check_output(["wg", "show", "wg0", "allowed-ips"], text=True, timeout=5)
-        peers = {}
-        for line in out.strip().split("\n"):
-            if "\t" in line:
-                pub, ips = line.split("\t", 1)
-                peers[pub.strip()] = ips.strip()
-        return jsonify({"peers": peers})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/peers/add", methods=["POST"])
-def add_peer():
-    if not check_api_key():
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.json
-    pub_key = data.get("public_key", "")
-    allowed_ips = data.get("allowed_ips", "")
-    if not pub_key or not allowed_ips:
-        return jsonify({"error": "missing public_key or allowed_ips"}), 400
-    try:
-        subprocess.run(["wg", "set", "wg0", "peer", pub_key, "allowed-ips", allowed_ips], check=True, timeout=5)
-        subprocess.run(["wg-quick", "save", "wg0"], timeout=5)
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/peers/remove", methods=["POST"])
-def remove_peer():
-    if not check_api_key():
-        return jsonify({"error": "unauthorized"}), 401
-    pub_key = request.json.get("public_key", "")
-    if not pub_key:
-        return jsonify({"error": "missing public_key"}), 400
-    try:
-        subprocess.run(["wg", "set", "wg0", "peer", pub_key, "remove"], check=True, timeout=5)
-        subprocess.run(["wg-quick", "save", "wg0"], timeout=5)
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/info")
-def info():
-    if not check_api_key():
-        return jsonify({"error": "unauthorized"}), 401
-    env = load_env()
-    return jsonify({
-        "ip": env.get("SERVER_PUBLIC_IP_V4"),
-        "wg_public_key": env.get("SERVER_WG_PUBLIC_KEY"),
-        "obfuscator_key": env.get("OBFUSCATOR_KEY"),
-        "ports": env.get("OBFUSCATOR_PORTS", "2083").split(","),
-        "role": "secondary"
-    })
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8444)
-PYEOF
+# Mini-API (fetched from PCA — includes /api/router-config for tunnel pull)
+PCA_BRANCH="${PCA_BRANCH:-main}"
+RAW="https://raw.githubusercontent.com/andrey271192/PCA_Phobos/${PCA_BRANCH}"
+if [ -n "${GH_TOKEN:-}" ]; then
+    curl -fsSL -H "Authorization: token $GH_TOKEN" "$RAW/server/api.py" -o "$PHOBOS_DIR/server/api.py"
+else
+    curl -fsSL "$RAW/server/api.py" -o "$PHOBOS_DIR/server/api.py"
+fi
+[ -s "$PHOBOS_DIR/server/api.py" ] || { echo "ERROR: api.py fetch failed"; exit 1; }
 
 cat > /etc/systemd/system/phobos-api.service << EOF
 [Unit]

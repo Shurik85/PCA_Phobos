@@ -2,12 +2,27 @@
 
 Веб-панель управления для [Phobos](https://git.zerrolabs.org/Ground-Zerro/Phobos) (обфусцированный WireGuard VPN).
 
-## Быстрый старт
+## Быстрый старт (turnkey — с чистого VPS, одной командой)
 
-**Требование:** Phobos уже установлен на VPS ([инструкция](https://git.zerrolabs.org/Ground-Zerro/Phobos)).
+Ставит ВСЁ со всеми зависимостями: wg-obfuscator, WireGuard, обфускатор-сервисы,
+веб-панель, nginx, скрипты онбординга роутеров и сторож авто-восстановления.
+Предустановленный Phobos НЕ требуется.
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+```
+
+> Если репозиторий приватный — добавь `GH_TOKEN`:
+> ```bash
+> GH_TOKEN=ghp_xxx bash <(curl -fsSL -H "Authorization: token ghp_xxx" \
+>   https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+> ```
+
+### Вторичный сервер (для failover/балансировки)
+
+```bash
+MAIN_SERVER=<ip_основного> MAIN_API_KEY=<API key из основного> \
+bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)
 ```
 
 ### С кастомными параметрами
