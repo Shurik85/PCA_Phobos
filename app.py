@@ -600,8 +600,14 @@ input:focus{outline:none;border-color:#4f46e5}
 </div>
 CONTENT
 <div class="footer">
-Phobos VPN Panel · <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener">💖 Boosty</a> · <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener">💳 Ozon</a> · <a href="https://t.me/Iot_andrey" target="_blank" rel="noopener">✉️ Telegram</a><br>
-<span style="font-size:.9em;color:#475569">based on <a href="https://github.com/Ground-Zerro/Phobos" target="_blank" rel="noopener">Phobos</a> (<a href="https://boosty.to/ground_zerro" target="_blank" rel="noopener">Ground_Zerro</a>) · <a href="https://github.com/wg-easy/wg-easy" target="_blank" rel="noopener">WireGuard Easy</a> (<a href="https://github.com/sponsors/WeeJeWel" target="_blank" rel="noopener">Emile Nijssen</a>) · <a href="https://github.com/ClusterM/wg-obfuscator" target="_blank" rel="noopener">wg-obfuscator</a> (<a href="https://boosty.to/cluster" target="_blank" rel="noopener">ClusterM</a>)</span>
+<b style="color:#a5b4fc">PCA Phobos Panel</b> — панель управления &copy; <a href="https://github.com/andrey271192/PCA_Phobos" target="_blank" rel="noopener">andrey271192</a><br>
+Поддержать проект: <a href="https://boosty.to/andrey27/donate" target="_blank" rel="noopener">💖 Boosty</a> · <a href="https://finance.ozon.ru/apps/sbp/ozonbankpay/019dc200-2a5d-7931-a619-782d285f6798" target="_blank" rel="noopener">💳 Ozon Bank</a> · <a href="https://t.me/c/2474115507/78722" target="_blank" rel="noopener">✉️ Telegram</a>
+<div style="margin-top:8px;font-size:.88em;color:#475569;line-height:1.7;text-align:left;max-width:660px;margin:8px auto 0">
+<b>Создано на основе открытых проектов:</b><br>
+&bull; <a href="https://github.com/Ground-Zerro/Phobos" target="_blank" rel="noopener">Phobos</a> — обфусцированный WireGuard VPN, автор <b>Ground_Zerro</b> &middot; <a href="https://boosty.to/ground_zerro" target="_blank" rel="noopener">поддержать</a><br>
+&bull; <a href="https://github.com/wg-easy/wg-easy" target="_blank" rel="noopener">WireGuard Easy</a> — веб-панель WireGuard (AGPL-3.0), автор <b>Emile Nijssen</b> &middot; <a href="https://github.com/sponsors/WeeJeWel" target="_blank" rel="noopener">поддержать</a><br>
+&bull; <a href="https://github.com/ClusterM/wg-obfuscator" target="_blank" rel="noopener">wg-obfuscator</a> — обфускация WireGuard-трафика (GPL-3.0), автор <b>ClusterM</b> &middot; <a href="https://boosty.to/cluster" target="_blank" rel="noopener">поддержать</a>
+</div>
 </div>
 <script>
 function showHelp(el){var b=el.nextElementSibling; if(b&&b.classList.contains('help-box')){b.classList.toggle('show');}}
