@@ -403,6 +403,49 @@ def generate_failover_conf_for_client(client_id):
     return "\n".join(lines) + "\n"
 
 
+def build_phone_config(cid, mode="android"):
+    """Assemble a phone client config from the client's files.
+    android = WireGuard + [instance] obfuscator -> phobos:// link (PhobosWG app).
+    ios     = plain WireGuard (no obfuscation), Endpoint -> server:51820."""
+    import base64, urllib.parse
+    cdir = os.path.join(CLIENTS_DIR, cid)
+    wgpath = os.path.join(cdir, cid + ".conf")
+    instpath = os.path.join(cdir, "wg-obfuscator.conf")
+    if not os.path.exists(wgpath):
+        return None, None
+    wg = open(wgpath).read().rstrip()
+    if mode == "ios":
+        server_ip = SERVER_IP
+        try:
+            for ln in open(instpath):
+                if ln.strip().startswith("target"):
+                    server_ip = ln.split("=", 1)[1].strip().split(":")[0]
+                    break
+        except Exception:
+            pass
+        out = []
+        for ln in wg.split("\n"):
+            out.append("Endpoint = %s:51820" % server_ip if ln.strip().startswith("Endpoint") else ln)
+        return "\n".join(out) + "\n", None
+    inst = ""
+    if os.path.exists(instpath):
+        inst = open(instpath).read().strip()
+    conf = wg + "\n\n" + inst + "\n"
+    b64 = base64.urlsafe_b64encode(conf.encode()).decode().rstrip("=")
+    link = "phobos://" + b64 + "#" + urllib.parse.quote(cid)
+    return conf, link
+
+
+def qr_datauri(data):
+    try:
+        import qrcode, io, base64
+        buf = io.BytesIO()
+        qrcode.make(data).save(buf, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
 def fanout_router_config(client_id):
     """Push this client's failover.conf to every secondary server's agent so
     routers can PULL it through the tunnel (10.25.0.1:8444) — survives a public
@@ -960,6 +1003,8 @@ def clients_page():
             <input type="hidden" name="client_id" value="{cid}">
             <button class="btn btn-danger btn-sm" type="submit">{tr("Удалить", "Del")}</button>
             </form>
+            <a href="/client/{cid}/phone/android" class="btn btn-sm" style="background:#16a34a" title="Android / PhobosWG">📱</a>
+            <a href="/client/{cid}/phone/ios" class="btn btn-sm" style="background:#475569" title="iPhone / iOS WireGuard">🍎</a>
             {h_del}
         </td>
         </tr>"""
@@ -1208,6 +1253,36 @@ def sync_peer_to_all_servers(public_key, allowed_ips, action="add"):
     for srv in servers:
         if srv.get("enabled", True):
             sync_peer_to_server(srv, public_key, allowed_ips, action)
+
+
+@app.route("/client/<cid>/phone/<mode>")
+@auth_required
+def client_phone(cid, mode):
+    if mode not in ("android", "ios"):
+        mode = "android"
+    conf, link = build_phone_config(cid, mode)
+    if conf is None:
+        return ("client not found", 404)
+    qr = qr_datauri(link if (mode == "android" and link) else conf)
+    if mode == "android":
+        title = tr("Android — PhobosWG (с обфускацией)", "Android — PhobosWG (obfuscated)")
+        extra = (f'<p>{tr("phobos:// ссылка — импорт в PhobosWG:", "phobos:// link — import into PhobosWG:")}</p>'
+                 f'<textarea readonly onclick="this.select()" style="width:100%;height:90px;font-size:.75em">{link}</textarea>')
+    else:
+        title = tr("iPhone / iOS WireGuard (без обфускации)", "iPhone / iOS WireGuard (plain, no obfuscation)")
+        extra = (f'<p style="color:#fcd34d">{tr("⚠ Обычный WireGuard без маскировки (Endpoint → :51820). На сервере должен быть открыт порт 51820.", "⚠ Plain WireGuard, no obfuscation (Endpoint → :51820). Port 51820 must be open on the server.")}</p>')
+    html = f"""
+    <div class="container">
+    {nav('clients')}
+    <div class="card" style="text-align:center">
+    <h2>{cid} — {title}</h2>
+    <img src="{qr}" alt="QR" style="width:300px;height:300px;background:#fff;padding:10px;border-radius:10px"><br>
+    <p style="margin-top:10px">{tr("Отсканируй QR в приложении или импортируй конфиг:", "Scan the QR in the app or import the config:")}</p>
+    {extra}
+    <textarea readonly onclick="this.select()" style="width:100%;height:250px;font-family:monospace;font-size:.78em">{conf}</textarea>
+    <p style="margin-top:10px"><a href="/clients" class="btn btn-sm">{tr("← назад", "← back")}</a></p>
+    </div></div>"""
+    return render(html)
 
 
 @app.route("/api/router-config/<client_id>")

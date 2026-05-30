@@ -54,7 +54,7 @@ echo "[1/9] dependencies..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq wireguard wireguard-tools iptables jq curl git \
-    python3 python3-flask gunicorn nginx cron >/dev/null
+    python3 python3-flask gunicorn nginx cron python3-qrcode >/dev/null
 systemctl enable cron -q 2>/dev/null || true; systemctl start cron 2>/dev/null || true
 
 # ── 2. wg-obfuscator binary (Ground-Zerro) ──
@@ -107,8 +107,13 @@ systemctl restart wg-quick@wg0
 # ── 5. obfuscator services (multi-port) ──
 echo "[5/9] obfuscator services..."
 OBF_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
-iptables -C INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP 2>/dev/null \
-    || iptables -A INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP
+# Block direct WG (force obfuscation) unless ALLOW_PLAIN_WG=1 (e.g. for iOS WireGuard)
+if [ -z "${ALLOW_PLAIN_WG:-}" ]; then
+    iptables -C INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP 2>/dev/null \
+        || iptables -A INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP
+else
+    iptables -D INPUT -p udp --dport 51820 ! -s 127.0.0.1 -j DROP 2>/dev/null || true
+fi
 IFS=',' read -ra PORTS <<< "$OBF_PORTS"
 for PORT in "${PORTS[@]}"; do
     cat > "$PHOBOS_DIR/server/wg-obfuscator-${PORT}.conf" <<EOF
