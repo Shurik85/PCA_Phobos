@@ -224,8 +224,11 @@ nginx -t >/dev/null 2>&1 && systemctl enable nginx -q 2>/dev/null && systemctl r
 # ── 9. router watchdog (auto reboot-recovery) ──
 echo "[9/9] router watchdog..."
 if [ -f "$PHOBOS_DIR/server/phobos-router-watchdog.py" ]; then
-    ( crontab -l 2>/dev/null | grep -v phobos-router-watchdog; \
-      echo "*/3 * * * * /usr/bin/python3 $PHOBOS_DIR/server/phobos-router-watchdog.py >/dev/null 2>&1" ) | crontab -
+    # set -e safe: grep -v on an empty crontab returns 1, so guard with || true
+    CRON_CUR=$(crontab -l 2>/dev/null | grep -v phobos-router-watchdog || true)
+    printf '%s\n%s\n' "$CRON_CUR" \
+      "*/3 * * * * /usr/bin/python3 $PHOBOS_DIR/server/phobos-router-watchdog.py >/dev/null 2>&1" \
+      | grep -v '^[[:space:]]*$' | crontab -
 fi
 
 sleep 2
