@@ -138,6 +138,22 @@ phobos-update --list       # список бэкапов
 
 ---
 
+## Полное удаление сервера
+
+Одной командой (спросит подтверждение):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/uninstall.sh)
+```
+
+Без подтверждения: `PURGE=1 bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/uninstall.sh)`
+
+Удаляет: веб-панель, обфускатор-сервисы, WireGuard `wg0`, агент, nginx-сайт, watchdog-cron, iptables-правила, бинарники (`wg-obfuscator`, `phobos-update`) и каталоги `/opt/Phobos`, `/opt/phobos-panel`. Общие пакеты (wireguard, nginx, cron) НЕ трогает.
+
+**Удаление с роутера** (на самом роутере): `/opt/etc/Phobos/phobos-uninstall.sh`
+
+---
+
 ## Возможные проблемы и решения
 
 | Симптом | Причина | Решение |
