@@ -6,6 +6,11 @@ check_root
 load_env
 ensure_dirs
 
+# server.env stores OBFUSCATOR_PORTS (plural, comma list). Client obfuscator
+# must target an ACTUAL listening port — derive single port from the first one.
+# (Bug: default 51821 was never listened on -> client handshake failed.)
+OBFUSCATOR_PORT="${OBFUSCATOR_PORT:-$(echo "${OBFUSCATOR_PORTS:-51821}" | cut -d',' -f1)}"
+
 CMD="${1:-help}"
 CLIENT_ARG="${2:-}"
 EXTRA_ARG="${3:-}"
@@ -209,8 +214,8 @@ action_package() {
   cp "$dir/${id}.conf" "$pkg_root/${id}.conf"
   cp "$dir/wg-obfuscator.conf" "$pkg_root/wg-obfuscator.conf"
 
-  # Fetch missing router-arch binaries from ClusterM on-demand (Ground-Zerro = x86_64 only)
-  local _tag; _tag=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+  # Fetch missing router-arch binaries from ClusterM on-demand
+  local _tag; _tag=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*//')
   local _cb="https://github.com/ClusterM/wg-obfuscator/releases/download/${_tag}"
   declare -A _am=([aarch64]="linux-arm64" [mipsel]="linux-mipsel-mips32" [mips]="linux-mips-mips32" [armv7]="linux-armv7-hf" [x86_64]="linux-x64")
   for _arch in aarch64 mipsel mips armv7 x86_64; do
@@ -262,7 +267,7 @@ action_package() {
   source "$PHOBOS_DIR/server/server.env"
   cat > "$pkg_root/failover.conf" <<FAILEOF
 # Phobos Failover Configuration
-SERVER_1=${SERVER_PUBLIC_IP_V4}:51821,51822,51823
+SERVER_1=${SERVER_PUBLIC_IP_V4}:${OBFUSCATOR_PORTS:-51821,51822,51823}
 KEY_1=${OBFUSCATOR_KEY}
 FAILEOF
   
