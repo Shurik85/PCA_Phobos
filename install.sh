@@ -85,12 +85,27 @@ if [ ! -x /usr/local/bin/wg-obfuscator ]; then
     git init -q; git remote add origin https://github.com/Ground-Zerro/Phobos.git
     git config core.sparseCheckout true; echo "wg-obfuscator" > .git/info/sparse-checkout
     git pull origin main -q
-    cp -f "wg-obfuscator/bin/wg-obfuscator-${ARCH}" "$PHOBOS_DIR/bin/" 2>/dev/null || true
+    cp -f "wg-obfuscator/bin/"wg-obfuscator-* "$PHOBOS_DIR/bin/" 2>/dev/null || true
     chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-* 2>/dev/null || true
-    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${ARCH}" /usr/local/bin/wg-obfuscator
+    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
     cd /; rm -rf "$R"
 fi
+_OBF_TAG=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+_CB="https://github.com/ClusterM/wg-obfuscator/releases/download/${_OBF_TAG}"
+for _am in "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-mips32" "armv7:linux-armv7-hf"; do
+  _da="${_am%%:*}"; _ss="${_am##*:}"
+  if [ ! -f "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" ] && [ -n "$_OBF_TAG" ]; then
+    _t=$(mktemp -d)
+    curl -fsSL -m30 "${_CB}/wg-obfuscator-${_OBF_TAG}-${_ss}.tar.gz" -o "$_t/o.tgz" 2>/dev/null &&
+      tar -xzf "$_t/o.tgz" -C "$_t" 2>/dev/null &&
+      _b=$(find "$_t" -name "wg-obfuscator" | head -1) &&
+      [ -n "$_b" ] && cp "$_b" "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" && chmod +x "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" && echo "  +wg-obfuscator-${_da} (ClusterM ${_OBF_TAG})"
+    rm -rf "$_t"
+  fi
+done
+[ -x /usr/local/bin/wg-obfuscator ] || ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
 [ -x /usr/local/bin/wg-obfuscator ] || { echo "ERROR: obfuscator binary for $ARCH missing"; exit 1; }
+echo "  bins: $(ls $PHOBOS_DIR/bin/ | tr '\n' ' ')"
 
 # ── 3. Phobos repo (onboarding scripts) ──
 echo "[3/9] Phobos repo (onboarding scripts)..."
