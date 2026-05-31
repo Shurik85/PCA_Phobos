@@ -591,24 +591,15 @@ def add_peer_to_server(server_ip, public_key, allowed_ips):
             return {"status": "error", "msg": str(e)}
     # Secondary — call API
     servers = load_servers()
-    api_key = ""
+    target_server = {"ip": server_ip, "api_key": ""}
     for srv in servers:
         if srv["ip"] == server_ip:
-            api_key = srv.get("api_key", "")
+            target_server = srv
             break
-    if not api_key:
-        return {"status": "error", "msg": f"No API key for {server_ip}"}
     try:
-        import urllib.request
-        data = json.dumps({"public_key": public_key, "allowed_ips": allowed_ips}).encode()
-        req = urllib.request.Request(
-            f"http://{server_ip}:8444/api/peers/add",
-            data=data,
-            headers={"X-API-Key": api_key, "Content-Type": "application/json"},
-            method="POST"
-        )
-        resp = urllib.request.urlopen(req, timeout=10)
-        return json.loads(resp.read())
+        return secondary_api_request(target_server, "/api/peers/add", {
+            "public_key": public_key, "allowed_ips": allowed_ips
+        }, timeout=10)
     except Exception as e:
         return {"status": "error", "msg": str(e)[:200]}
 
@@ -785,23 +776,15 @@ def fanout_router_config(client_id):
         conf = generate_failover_conf_for_client(client_id)
     except Exception:
         return
-    import urllib.request
-    payload = json.dumps({"client_id": client_id, "conf": conf}).encode()
     for srv in load_servers():
         ip = srv.get("ip", "")
-        key = srv.get("api_key", "")
         if not ip:
             continue
         # skip servers the monitor already knows are down (avoid blocking)
         if server_stats_cache.get(ip, {}).get("status") == "down":
             continue
         try:
-            req = urllib.request.Request(
-                f"http://{ip}:8444/api/router-config-set",
-                data=payload,
-                headers={"X-API-Key": key, "Content-Type": "application/json"},
-                method="POST")
-            urllib.request.urlopen(req, timeout=3)
+            secondary_api_request(srv, "/api/router-config-set", {"client_id": client_id, "conf": conf}, timeout=3)
         except Exception:
             pass
 
@@ -1606,6 +1589,56 @@ def save_servers(servers):
         json.dump(servers, f, indent=2)
 
 
+def _server_api_key_candidates(server):
+    keys = []
+    for key in (server.get("api_key", ""), load_settings().get("server_api_key", "")):
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _remember_server_api_key(ip, api_key):
+    if not ip or not api_key:
+        return
+    servers = load_servers()
+    changed = False
+    for srv in servers:
+        if srv.get("ip") == ip and srv.get("api_key") != api_key:
+            srv["api_key"] = api_key
+            changed = True
+    if changed:
+        save_servers(servers)
+
+
+def secondary_api_request(server, path, data=None, timeout=10):
+    import urllib.error
+    import urllib.request
+    headers = {"Content-Type": "application/json"}
+    body = json.dumps(data).encode() if data is not None else None
+    last_error = None
+    for key in _server_api_key_candidates(server):
+        headers["X-API-Key"] = key
+        try:
+            req = urllib.request.Request(
+                f"http://{server['ip']}:8444{path}",
+                data=body,
+                headers=headers,
+                method="POST" if body is not None else "GET",
+            )
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            _remember_server_api_key(server.get("ip", ""), key)
+            server["api_key"] = key
+            return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            last_error = e
+            if e.code in (401, 403):
+                continue
+            raise
+    if last_error:
+        raise last_error
+    raise RuntimeError("no API key for secondary server")
+
+
 def panel_port():
     try:
         return open(os.path.join(PANEL_DIR, ".port")).read().strip() or "8443"
@@ -1666,11 +1699,7 @@ def get_all_servers_ordered():
 def check_server_health(server):
     """Check secondary server health via API."""
     try:
-        import urllib.request
-        url = f"http://{server['ip']}:8444/api/health"
-        req = urllib.request.Request(url, headers={"X-API-Key": server.get("api_key", "")})
-        resp = urllib.request.urlopen(req, timeout=5)
-        return json.loads(resp.read())
+        return secondary_api_request(server, "/api/health", timeout=5)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1678,17 +1707,11 @@ def check_server_health(server):
 def sync_peer_to_server(server, public_key, allowed_ips, action="add"):
     """Add or remove peer on secondary server."""
     try:
-        import urllib.request
-        url = f"http://{server['ip']}:8444/api/peers/{action}"
-        data = json.dumps({"public_key": public_key, "allowed_ips": allowed_ips}).encode()
-        req = urllib.request.Request(url, data=data, headers={
-            "Content-Type": "application/json",
-            "X-API-Key": server.get("api_key", "")
-        })
-        resp = urllib.request.urlopen(req, timeout=10)
-        return json.loads(resp.read())
-    except Exception:
-        return {"status": "error"}
+        return secondary_api_request(server, f"/api/peers/{action}", {
+            "public_key": public_key, "allowed_ips": allowed_ips
+        }, timeout=10)
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:200]}
 
 
 def sync_peer_to_all_servers(public_key, allowed_ips, action="add"):
@@ -1793,6 +1816,7 @@ def api_register_server():
     for srv in servers:
         if srv["ip"] == ip:
             srv.update(data)
+            srv["api_key"] = api_key
             srv["last_seen"] = datetime.now().isoformat()
             save_servers(servers)
             return json.dumps({"status": "updated"}), 200, {"Content-Type": "application/json"}
@@ -1970,7 +1994,7 @@ def servers_page():
         action = request.form.get("action")
         if action == "add":
             ip = request.form.get("ip", "").strip()
-            api_key = request.form.get("api_key", "").strip()
+            api_key = request.form.get("api_key", "").strip() or s.get("server_api_key", "")
             ssh_user = request.form.get("ssh_user", "root").strip() or "root"
             ssh_pass = request.form.get("ssh_pass", "").strip()
             ssh_port = request.form.get("ssh_port", "22").strip() or "22"
@@ -2020,11 +2044,7 @@ def servers_page():
             for srv in servers:
                 if srv["ip"] == ip:
                     try:
-                        import urllib.request as ul
-                        url = f"http://{ip}:8444/api/info"
-                        rq = ul.Request(url, headers={"X-API-Key": srv.get("api_key", "")})
-                        resp = ul.urlopen(rq, timeout=5)
-                        info = json.loads(resp.read())
+                        info = secondary_api_request(srv, "/api/info", timeout=5)
                         srv["wg_public_key"] = info.get("wg_public_key", "")
                         srv["obfuscator_key"] = info.get("obfuscator_key", "")
                         srv["ports"] = ",".join(info.get("ports", []))
@@ -2327,12 +2347,12 @@ def servers_page():
     <form method="post" class="form-row" style="margin-top:16px;flex-wrap:wrap">
     <input type="hidden" name="action" value="add">
     <input type="text" name="ip" placeholder="{tr('IP сервера','Server IP')}" required>
-    <input type="text" name="api_key" placeholder="API key" style="width:160px">
+    <input type="text" name="api_key" placeholder="{tr('API key (пусто = главный)','API key (blank = main)')}" style="width:190px">
     <input type="text" name="ssh_user" placeholder="root" style="width:70px" value="root">
     <input type="number" name="ssh_port" placeholder="22" value="22" min="1" max="65535" style="width:80px">
     <input type="password" name="ssh_pass" placeholder="SSH pass" style="width:140px">
     <button class="btn btn-primary" type="submit">{tr("Добавить сервер","Add Server")}</button>
-    {hlp("Добавить новый VPN-сервер в пул резервирования. Нужны: IP, API-ключ агента (порт 8444) и SSH-пароль для первичной настройки.", "Add a new VPN server to the failover pool. Needs: IP, agent API key (port 8444) and SSH password for initial setup.")}
+    {hlp("Добавить новый VPN-сервер в пул резервирования. Если secondary ставился командой ниже, API key можно оставить пустым — будет использован главный ключ панели. 8444 — это порт mini-API, не ключ.", "Add a new VPN server to the failover pool. If the secondary was installed with the command below, API key may be left blank — the panel main key will be used. 8444 is the mini-API port, not the key.")}
     </form>
     </div>
 
@@ -2395,7 +2415,7 @@ def servers_page():
     <div class="card">
     <h2>Deploy Secondary Server</h2>
     <p style="color:#94a3b8;font-size:.85em;margin-bottom:8px">One command deploys WG + obfuscator + mini-API on a new VPS. Auto-registers in panel. Run via SSH on new VPS:</p>
-    <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all">MAIN_SERVER={SERVER_IP} MAIN_API_KEY={api_key} bash &lt;(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)</code>
+    <code style="background:#0f172a;padding:8px 12px;border-radius:6px;display:block;font-size:.82em;word-break:break-all">MAIN_SERVER={SERVER_IP} MAIN_PORT={panel_port()} MAIN_API_KEY={api_key} bash &lt;(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)</code>
     </div>
     </div>"""
     return render(html)

@@ -4,7 +4,7 @@
 #  Deploys WG + obfuscator + mini-API (no web panel)
 #
 #  Usage:
-#    MAIN_SERVER=212.118.52.193 MAIN_API_KEY=secret123 \
+#    MAIN_SERVER=212.118.52.193 MAIN_PORT=10514 MAIN_API_KEY=secret123 \
 #    bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/server/secondary-setup.sh)
 #
 #  Uninstall:
@@ -15,6 +15,7 @@ set -e
 
 MAIN_SERVER="${MAIN_SERVER:?Set MAIN_SERVER=ip_of_main_server}"
 MAIN_API_KEY="${MAIN_API_KEY:?Set MAIN_API_KEY=your_api_key}"
+MAIN_PORT="${MAIN_PORT:-8443}"
 OBF_PORTS="${OBF_PORTS:-2083,5443,993}"
 PHOBOS_DIR="/opt/Phobos"
 
@@ -30,6 +31,7 @@ echo "╠═══════════════════════�
 echo "║  Server IP   : $SERVER_IP"
 echo "║  Interface   : $IFACE"
 echo "║  Main server : $MAIN_SERVER"
+echo "║  Main port   : $MAIN_PORT"
 echo "║  OBF ports   : $OBF_PORTS"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
@@ -233,6 +235,7 @@ OBFUSCATOR_KEY=$OBF_KEY
 OBFUSCATOR_PORTS=$OBF_PORTS
 MAIN_SERVER=$MAIN_SERVER
 MAIN_API_KEY=$MAIN_API_KEY
+MAIN_PORT=$MAIN_PORT
 ROLE=secondary
 EOF
 
@@ -367,7 +370,7 @@ REG_DATA=$(cat << EOF
 }
 EOF
 )
-curl -s -X POST "http://${MAIN_SERVER}:$(cat /opt/phobos-panel/.port 2>/dev/null || echo 8443)/api/servers/register" \
+curl -s -X POST "http://${MAIN_SERVER}:${MAIN_PORT}/api/servers/register" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${MAIN_API_KEY}" \
     -d "$REG_DATA" || echo "   (Registration will be done manually via panel)"
