@@ -49,12 +49,30 @@ trap 'rm -f "$LOCK"' EXIT
 
 [ -z "$TOKEN" ] && exit 0
 
+detect_tunnel_iface() {
+    ip -o addr show 2>/dev/null | awk '$4 ~ /^10\.25\./ {print $2; exit}'
+}
+
+fetch_config() {
+    base="$1"
+    url="${base}/api/router-config/${CLIENT_ID}?token=${TOKEN}"
+    case "$base" in
+        http://10.25.0.1:*|https://10.25.0.1:*)
+            iface=$(detect_tunnel_iface)
+            if [ -n "$iface" ] && command -v curl >/dev/null; then
+                curl --interface "$iface" -s -m 8 -o "$TMP" "$url" 2>/dev/null && return 0
+            fi
+            ;;
+    esac
+    curl -s -m 8 -o "$TMP" "$url" 2>/dev/null
+}
+
 # One fetch + compare + apply pass. Returns 0 always (best-effort).
 do_pull() {
     # Try each source (tunnel first); accept first that returns a valid conf.
     got=0
     for base in $PANEL_URLS; do
-        curl -s -m 8 -o "$TMP" "${base}/api/router-config/${CLIENT_ID}?token=${TOKEN}" 2>/dev/null || continue
+        fetch_config "$base" || continue
         if grep -q "^SERVER_1=" "$TMP" 2>/dev/null; then got=1; break; fi
     done
     [ "$got" = 1 ] || { rm -f "$TMP"; return 0; }
