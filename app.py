@@ -7,7 +7,7 @@ Management panel: clients, sessions, labels, subscriptions, Telegram alerts.
 import json, os, subprocess, threading, time, secrets, hashlib, re, fcntl
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, request, redirect, url_for, session, make_response
+from flask import Flask, request, redirect, url_for, session, make_response, send_from_directory
 
 _settings_lock = threading.Lock()
 
@@ -481,6 +481,7 @@ prev_session_keys = None
 prev_server_status = {}
 _down_streak = {}
 _last_fanout = 0
+_last_peer_sync = 0
 server_stats_cache = {}
 server_handshakes_cache = {}
 
@@ -809,6 +810,7 @@ def _ssh_run(access, cmd, timeout=20):
     """Try SSH: tunnel IP first, then static IP as fallback."""
     ssh_user = access.get("ssh_user", "root")
     ssh_pass = access.get("ssh_pass", "")
+    ssh_port = str(access.get("ssh_port", "22") or "22")
     ips_to_try = []
     if access.get("ssh_ip"):
         ips_to_try.append(access["ssh_ip"])
@@ -820,7 +822,7 @@ def _ssh_run(access, cmd, timeout=20):
         try:
             result = subprocess.run(
                 ["sshpass", "-p", ssh_pass, "ssh",
-                 "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=3",
+                 "-p", ssh_port, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=3",
                  f"{ssh_user}@{ip}", cmd],
                 capture_output=True, text=True, timeout=timeout
             )
@@ -847,7 +849,7 @@ def push_config_to_router(client_id):
 
 
 def session_monitor():
-    global prev_session_keys, prev_server_status, server_stats_cache, _last_fanout, _down_streak
+    global prev_session_keys, prev_server_status, server_stats_cache, _last_fanout, _last_peer_sync, _down_streak
     while True:
         try:
             s = load_settings()
@@ -910,6 +912,13 @@ def session_monitor():
                 _last_fanout = time.time()
                 for _c in get_clients():
                     fanout_router_config(_c.get("client_id", ""))
+
+            # periodic peer repair to secondaries. This is what makes router
+            # server-failover work without pressing "Sync" after old clients
+            # or newly added secondary servers.
+            if time.time() - _last_peer_sync >= 300:
+                _last_peer_sync = time.time()
+                sync_missing_peers_to_secondaries()
 
             check_expiry()
             time.sleep(interval)
@@ -1565,13 +1574,14 @@ def _render_install_commands():
     if not tokens:
         return '<p style="color:#64748b;font-size:.85em">Нет активных токенов. Добавьте клиента.</p>'
 
+    port = panel_port()
     lines = ""
     for t in tokens:
         client = t.get("client", "?")
         token = t.get("token", "")
         expires = t.get("expires", 0)
         exp_str = datetime.fromtimestamp(expires).strftime("%Y-%m-%d %H:%M") if expires else "?"
-        cmd = f"wget -O - http://{SERVER_IP}/init/{token}.sh | sh"
+        cmd = install_command(token, port)
         lines += f"""
         <div style="margin-bottom:10px">
         <span style="color:#a5b4fc;font-size:.85em">{client}</span>
@@ -1594,6 +1604,36 @@ def load_servers():
 def save_servers(servers):
     with open(SERVERS_FILE, "w") as f:
         json.dump(servers, f, indent=2)
+
+
+def panel_port():
+    try:
+        return open(os.path.join(PANEL_DIR, ".port")).read().strip() or "8443"
+    except Exception:
+        return "8443"
+
+
+def install_command(token, port=None):
+    port = port or panel_port()
+    urls = [f"http://{SERVER_IP}:{port}/init/{token}.sh", f"http://{SERVER_IP}/init/{token}.sh"]
+    return ("tmp=/tmp/phobos-init-$$.sh; ok=0; "
+            f"for u in {' '.join(urls)}; do "
+            "rm -f $tmp; "
+            "(wget -q -O $tmp $u || curl -fsSL -o $tmp $u) 2>/dev/null || continue; "
+            "grep -qi '<html' $tmp && continue; "
+            "head -1 $tmp | grep -q '^#!' || continue; "
+            "sh $tmp; ok=1; break; "
+            "done; rm -f $tmp; [ $ok -eq 1 ] || echo 'ERROR: install script download failed (got HTML/proxy page or timeout)'")
+
+
+@app.route("/init/<path:name>")
+def serve_init(name):
+    return send_from_directory(f"{PHOBOS_DIR}/www/init", name, mimetype="application/x-sh")
+
+
+@app.route("/packages/<path:name>")
+def serve_package(name):
+    return send_from_directory(f"{PHOBOS_DIR}/www/packages", name, mimetype="application/octet-stream")
 
 
 def get_main_server_info():
@@ -1665,6 +1705,30 @@ def sync_peer_to_all_servers(public_key, allowed_ips, action="add"):
     for srv in servers:
         if srv.get("enabled", True):
             sync_peer_to_server(srv, public_key, allowed_ips, action)
+
+
+def sync_missing_peers_to_secondaries(server=None):
+    """Best-effort peer repair: every secondary must already know every client.
+    Router failover can only work if the target server has the client's WG peer.
+    """
+    servers = [server] if server else [srv for srv in load_servers() if srv.get("enabled", True)]
+    clients = get_clients()
+    synced = 0
+    for srv in servers:
+        health = check_server_health(srv)
+        if health.get("status") not in ("ok", None):
+            continue
+        remote_keys = set(health.get("peer_keys", []) or [])
+        for c in clients:
+            pub = c.get("public_key", "")
+            tip = (c.get("tunnel_ip_v4") or "").split("/")[0]
+            if not pub or not tip or pub in remote_keys:
+                continue
+            res = sync_peer_to_server(srv, pub, f"{tip}/32", "add")
+            if res.get("status") == "ok":
+                synced += 1
+                remote_keys.add(pub)
+    return synced
 
 
 @app.route("/download/apk")
@@ -1834,9 +1898,10 @@ def api_client_ensure():
             os.chmod(f"{_www}/packages/{token}", 0o755)
         except Exception:
             pass
-    install_url = f"http://{SERVER_IP}/init/{token}.sh" if token else ""
+    install_url = f"http://{SERVER_IP}:{panel_port()}/init/{token}.sh" if token else ""
     return json.dumps({
         "ok": True, "client_id": cid, "install_url": install_url, "token": token,
+        "install_command": install_command(token) if token else "",
         "pull_token": pull_token, "tunnel_ip": tip, "assigned_server": assigned,
     }), 200, {"Content-Type": "application/json"}
 
@@ -1916,11 +1981,12 @@ def servers_page():
             api_key = request.form.get("api_key", "").strip()
             ssh_user = request.form.get("ssh_user", "root").strip() or "root"
             ssh_pass = request.form.get("ssh_pass", "").strip()
+            ssh_port = request.form.get("ssh_port", "22").strip() or "22"
             if ip:
                 servers.append({
                     "ip": ip, "api_key": api_key, "enabled": True,
                     "last_seen": "", "wg_public_key": "", "obfuscator_key": "", "ports": "",
-                    "ssh_user": ssh_user, "ssh_pass": ssh_pass
+                    "ssh_user": ssh_user, "ssh_pass": ssh_pass, "ssh_port": ssh_port
                 })
                 save_servers(servers)
                 order = s.get("server_order", [])
@@ -1928,7 +1994,8 @@ def servers_page():
                     order.append(ip)
                     s["server_order"] = order
                     save_settings(s)
-                msg = f'<div class="alert alert-ok">Сервер {ip} добавлен</div>'
+                synced = sync_missing_peers_to_secondaries(servers[-1])
+                msg = f'<div class="alert alert-ok">Сервер {ip} добавлен, синхронизировано {synced} клиентов</div>'
 
         elif action == "remove":
             ip = request.form.get("ip", "").strip()
@@ -2004,8 +2071,9 @@ def servers_page():
                 ssh_static = request.form.get(f"ssh_static_{cid}", "").strip()
                 ssh_user = request.form.get(f"ssh_user_{cid}", "root").strip() or "root"
                 ssh_pass = request.form.get(f"ssh_pass_{cid}", "").strip()
+                ssh_port = request.form.get(f"ssh_port_{cid}", "22").strip() or "22"
                 if ssh_ip or ssh_pass:
-                    ra[cid] = {"ssh_ip": ssh_ip, "ssh_static": ssh_static, "ssh_user": ssh_user, "ssh_pass": ssh_pass, "ssh_ok": ra.get(cid, {}).get("ssh_ok", False)}
+                    ra[cid] = {"ssh_ip": ssh_ip, "ssh_static": ssh_static, "ssh_user": ssh_user, "ssh_pass": ssh_pass, "ssh_port": ssh_port, "ssh_ok": ra.get(cid, {}).get("ssh_ok", False)}
                 elif cid in ra and not ssh_ip and not ssh_pass:
                     del ra[cid]
             s["router_access"] = ra
@@ -2025,7 +2093,7 @@ def servers_page():
                 try:
                     r = subprocess.run(
                         ["sshpass", "-p", acc.get("ssh_pass", ""), "ssh",
-                         "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+                         "-p", str(acc.get("ssh_port", "22") or "22"), "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
                          f"{acc.get('ssh_user','root')}@{ip}", "echo OK"],
                         capture_output=True, text=True, timeout=10
                     )
@@ -2079,10 +2147,12 @@ def servers_page():
                 ip = srv["ip"]
                 su = request.form.get(f"srv_ssh_user_{ip}", "").strip()
                 sp = request.form.get(f"srv_ssh_pass_{ip}", "").strip()
+                sport = request.form.get(f"srv_ssh_port_{ip}", "22").strip() or "22"
                 if su:
                     srv["ssh_user"] = su
                 if sp:
                     srv["ssh_pass"] = sp
+                srv["ssh_port"] = sport
             save_servers(servers)
             msg = '<div class="alert alert-ok">SSH доступ к серверам сохранён</div>'
 
@@ -2216,6 +2286,7 @@ def servers_page():
         ssh_static = acc.get("ssh_static", "")
         ssh_user = acc.get("ssh_user", "root")
         ssh_pass = acc.get("ssh_pass", "")
+        ssh_port = acc.get("ssh_port", "22")
         ssh_ok = acc.get("ssh_ok", False)
         ssh_tested = acc.get("ssh_tested", "")
         if ssh_ok:
@@ -2232,6 +2303,7 @@ def servers_page():
         <td><input type="text" name="ssh_ip_{cid}" value="{ssh_ip}" placeholder="{tunnel_ip}" style="width:120px;padding:4px" title="WG tunnel IP"></td>
         <td><input type="text" name="ssh_static_{cid}" value="{ssh_static}" placeholder="static" style="width:120px;padding:4px" title="Static/public IP (optional)"></td>
         <td><input type="text" name="ssh_user_{cid}" value="{ssh_user}" placeholder="root" style="width:60px;padding:4px"></td>
+        <td><input type="number" name="ssh_port_{cid}" value="{ssh_port}" placeholder="22" min="1" max="65535" style="width:70px;padding:4px"></td>
         <td><input type="password" name="ssh_pass_{cid}" value="{ssh_pass}" placeholder="pass" style="width:100px;padding:4px"></td>
         <td><span class="badge {badge_cls}" style="font-size:.7em">{badge_txt}</span></td>
         </tr>"""
@@ -2265,6 +2337,7 @@ def servers_page():
     <input type="text" name="ip" placeholder="{tr('IP сервера','Server IP')}" required>
     <input type="text" name="api_key" placeholder="API key" style="width:160px">
     <input type="text" name="ssh_user" placeholder="root" style="width:70px" value="root">
+    <input type="number" name="ssh_port" placeholder="22" value="22" min="1" max="65535" style="width:80px">
     <input type="password" name="ssh_pass" placeholder="SSH pass" style="width:140px">
     <button class="btn btn-primary" type="submit">{tr("Добавить сервер","Add Server")}</button>
     {hlp("Добавить новый VPN-сервер в пул резервирования. Нужны: IP, API-ключ агента (порт 8444) и SSH-пароль для первичной настройки.", "Add a new VPN server to the failover pool. Needs: IP, agent API key (port 8444) and SSH password for initial setup.")}
@@ -2276,7 +2349,7 @@ def servers_page():
     <form method="post">
     <input type="hidden" name="action" value="save_router_access">
     <table>
-    <tr><th>{tr("Клиент","Client")}</th><th>Tunnel IP</th><th>{tr("Статич. IP","Static IP")}</th><th>{tr("Пользователь","User")}</th><th>{tr("Пароль","Pass")}</th><th>{tr("Статус","Status")}</th></tr>
+    <tr><th>{tr("Клиент","Client")}</th><th>Tunnel IP</th><th>{tr("Статич. IP","Static IP")}</th><th>{tr("Пользователь","User")}</th><th>{tr("Порт","Port")}</th><th>{tr("Пароль","Pass")}</th><th>{tr("Статус","Status")}</th></tr>
     {access_rows}
     </table>
     <button class="btn btn-primary" type="submit" style="margin-top:10px">{tr("Сохранить SSH","Save SSH")}</button>
@@ -2305,10 +2378,11 @@ def servers_page():
     <form method="post">
     <input type="hidden" name="action" value="save_server_access">
     <table>
-    <tr><th>Server</th><th>SSH User</th><th>SSH Pass</th><th></th></tr>
+    <tr><th>Server</th><th>SSH User</th><th>SSH Port</th><th>SSH Pass</th><th></th></tr>
     {"".join(f'''<tr>
     <td>{srv.get("ip","")}</td>
     <td><input type="text" name="srv_ssh_user_{srv.get('ip','')}" value="{srv.get('ssh_user','root')}" placeholder="root" style="width:80px;padding:4px"></td>
+    <td><input type="number" name="srv_ssh_port_{srv.get('ip','')}" value="{srv.get('ssh_port','22')}" placeholder="22" min="1" max="65535" style="width:80px;padding:4px"></td>
     <td><input type="password" name="srv_ssh_pass_{srv.get('ip','')}" value="{srv.get('ssh_pass','')}" placeholder="pass" style="width:150px;padding:4px"></td>
     <td><span class="badge {'badge-on' if srv.get('ssh_pass') else 'badge-off'}">{'OK' if srv.get('ssh_pass') else '—'}</span></td>
     </tr>''' for srv in servers)}

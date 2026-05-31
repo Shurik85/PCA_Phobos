@@ -344,20 +344,40 @@ action_link() {
   ln -s "$PACKAGES_DIR/phobos-$id.tar.gz" "$link_dir/phobos-$id.tar.gz"
 
   mkdir -p "$WWW_DIR/init"
-  local script_url="http://${SERVER_PUBLIC_IP_V4}:${HTTP_PORT:-80}/packages/$token/phobos-$id.tar.gz"
+  local panel_port="${HTTP_PORT:-}"
+  if [[ -z "$panel_port" && -f /opt/phobos-panel/.port ]]; then
+    panel_port=$(cat /opt/phobos-panel/.port 2>/dev/null || true)
+  fi
+  panel_port="${panel_port:-80}"
+  local primary_url="http://${SERVER_PUBLIC_IP_V4}:${panel_port}/packages/$token/phobos-$id.tar.gz"
+  local fallback_url="http://${SERVER_PUBLIC_IP_V4}:80/packages/$token/phobos-$id.tar.gz"
 
   cat > "$WWW_DIR/init/$token.sh" <<EOF
 #!/bin/sh
-url="$script_url"
+urls="$primary_url $fallback_url"
 dir="/tmp/phobos_install_\$\$"
 mkdir -p "\$dir"
 echo "Downloading..."
-if command -v curl >/dev/null; then
-  curl -L -s -o "\$dir/package.tar.gz" "\$url"
-else
-  wget -q -O "\$dir/package.tar.gz" "\$url"
-fi
-if [ ! -f "\$dir/package.tar.gz" ]; then echo "Download failed"; exit 1; fi
+ok=0
+for url in \$urls; do
+  rm -f "\$dir/package.tar.gz"
+  if command -v curl >/dev/null; then
+    curl -L -s -o "\$dir/package.tar.gz" "\$url" 2>/dev/null || continue
+  else
+    wget -q -O "\$dir/package.tar.gz" "\$url" 2>/dev/null || continue
+  fi
+  if grep -qi '<html' "\$dir/package.tar.gz" 2>/dev/null; then
+    echo "Bad response from \$url (HTML/proxy page), trying next..."
+    continue
+  fi
+  tar tzf "\$dir/package.tar.gz" >/dev/null 2>&1 || {
+    echo "Bad package from \$url, trying next..."
+    continue
+  }
+  ok=1
+  break
+done
+[ "\$ok" = "1" ] || { echo "Download failed: no valid package"; exit 1; }
 cd "\$dir"
 tar xzf package.tar.gz
 cd "phobos-$id"
@@ -372,7 +392,9 @@ EOF
   chmod 755 "$PACKAGES_DIR" 2>/dev/null
   chmod 644 "$PACKAGES_DIR/phobos-$id.tar.gz" 2>/dev/null
 
-  local cmd="curl -s http://${SERVER_PUBLIC_IP_V4}:${HTTP_PORT:-80}/init/$token.sh | sh"
+  local init_primary="http://${SERVER_PUBLIC_IP_V4}:${panel_port}/init/$token.sh"
+  local init_fallback="http://${SERVER_PUBLIC_IP_V4}:80/init/$token.sh"
+  local cmd="tmp=/tmp/phobos-init-\$\$.sh; ok=0; for u in $init_primary $init_fallback; do rm -f \$tmp; (wget -q -O \$tmp \$u || curl -fsSL -o \$tmp \$u) 2>/dev/null || continue; grep -qi '<html' \$tmp && continue; head -1 \$tmp | grep -q '^#!' || continue; sh \$tmp; ok=1; break; done; rm -f \$tmp; [ \$ok -eq 1 ] || echo 'ERROR: install script download failed (got HTML/proxy page or timeout)'"
 
   echo ""
   echo "=================================================="
