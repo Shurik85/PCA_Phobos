@@ -113,7 +113,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main
 > Для каждого устройства создавай **отдельного клиента** (свой ключ и IP). Один конфиг на двух устройствах = конфликт ключей.
 
 **Приложения:**
-- **Android (PhobosWG):** на странице Android-клиента в панели есть кнопка **«Скачать приложение PhobosWG (APK)»** — приложение скачивается автоматически (доступно в каналах beta/dev). Установи APK, затем импортируй `phobos://`-ссылку или QR.
+- **Android (PhobosWG):** на странице Android-клиента в панели есть кнопка **«Скачать приложение PhobosWG (APK)»** — приложение скачивается автоматически из public stable release (доступно всем каналам: stable/beta/dev). Установи APK, затем импортируй `phobos://`-ссылку или QR.
 - **iPhone (iOS):** официальный [WireGuard из App Store](https://apps.apple.com/app/wireguard/id1441195209) — кнопка есть на странице iOS-клиента.
 
 ---

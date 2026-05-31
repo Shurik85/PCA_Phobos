@@ -1667,6 +1667,13 @@ def sync_peer_to_all_servers(public_key, allowed_ips, action="add"):
             sync_peer_to_server(srv, public_key, allowed_ips, action)
 
 
+@app.route("/download/apk")
+@auth_required
+def download_apk():
+    """Download public stable PhobosWG APK."""
+    return redirect("https://github.com/andrey271192/PCA_Phobos/releases/latest/download/PhobosWG.apk")
+
+
 @app.route("/client/<cid>/phone/<mode>")
 @auth_required
 def client_phone(cid, mode):
@@ -1678,10 +1685,9 @@ def client_phone(cid, mode):
     qr = qr_datauri(link if (mode == "android" and link) else conf)
     if mode == "android":
         title = tr("Android — PhobosWG (с обфускацией)", "Android — PhobosWG (obfuscated)")
-        apk_btn = ""
-        if os.path.exists("/opt/Phobos/www/app/PhobosWG.apk"):
-            apk_btn = (f'<p style="margin-top:6px"><a href="http://{SERVER_IP}/app/PhobosWG.apk" '
-                       f'class="btn btn-primary" style="background:#16a34a">📥 {tr("Скачать приложение PhobosWG (APK)","Download PhobosWG app (APK)")}</a></p>')
+        apk_btn = (f'<p style="margin-top:6px"><a href="/download/apk" '
+                   f'class="btn btn-primary" style="background:#16a34a">📥 {tr("Скачать приложение PhobosWG (APK)","Download PhobosWG app (APK)")}</a>'
+                   f'<span style="font-size:.8em;color:#94a3b8;margin-left:8px">{tr("stable public release","stable public release")}</span></p>')
         extra = (apk_btn +
                  f'<p>{tr("phobos:// ссылка — импорт в PhobosWG:", "phobos:// link — import into PhobosWG:")}</p>'
                  f'<textarea readonly onclick="this.select()" style="width:100%;height:90px;font-size:.75em">{link}</textarea>')
