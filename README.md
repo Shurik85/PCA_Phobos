@@ -152,6 +152,10 @@ phobos-update --list       # список бэкапов
 | **Смена сервера применяется не сразу** | роутер тянет конфиг по cron | Применяется за ~12–15 сек, не мгновенно |
 | **Забыл порт панели** | случайный порт | `cat /opt/phobos-panel/.port` |
 | **Забыл API key** | | `grep server_api_key /opt/phobos-panel/settings.json` |
+| **PhobosWG: «невозможно импортировать туннель»** | старая панель генерила неполный `phobos://` (без `PresharedKey`) | Обнови панель, заново скопируй `phobos://`-ссылку или пересканируй QR. Исправлено в v1.2.7 |
+| **Роутер aarch64: «бинарник не найден в архиве»** | Ground-Zerro раздаёт только x86_64 | Обнови (`phobos-update`) — aarch64/mipsel/armv7 авто-качаются из ClusterM, затем пересоздай клиента. Исправлено в v1.2.6 |
+| **Клиент не подключается, «НЕТ СОЕДИНЕНИЯ»** | клиентский обфускатор целился в неверный порт (51821) | Обнови панель → **пересоздай клиента** → переустанови на роутере. Порт берётся из `OBFUSCATOR_PORTS` |
+| **Удалить сервер полностью** | | `bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/uninstall.sh)` |
 
 Логи: `journalctl -u phobos-panel -n 50` · сторож: `/opt/Phobos/server/watchdog.log` · роутер: `/opt/etc/Phobos/health.log`.
 
