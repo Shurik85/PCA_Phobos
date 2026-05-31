@@ -764,8 +764,13 @@ def _pad_conf_with_none(conf):
 def qr_datauri(data):
     try:
         import qrcode, io, base64
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L,
+                           box_size=4, border=3)
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
         buf = io.BytesIO()
-        qrcode.make(data).save(buf, format="PNG")
+        img.save(buf, format="PNG")
         return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
     except Exception:
         return ""
@@ -1689,7 +1694,7 @@ def client_phone(cid, mode):
     {nav('clients')}
     <div class="card" style="text-align:center">
     <h2>{cid} — {title}</h2>
-    <img src="{qr}" alt="QR" style="width:300px;height:300px;background:#fff;padding:10px;border-radius:10px"><br>
+    <img src="{qr}" alt="QR" style="max-width:340px;width:100%;background:#fff;padding:10px;border-radius:10px;image-rendering:pixelated"><br>
     <p style="margin-top:10px">{tr("Отсканируй QR в приложении или импортируй конфиг:", "Scan the QR in the app or import the config:")}</p>
     {extra}
     <textarea readonly onclick="this.select()" style="width:100%;height:250px;font-family:monospace;font-size:.78em">{conf}</textarea>
