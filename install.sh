@@ -98,7 +98,7 @@ for _am in "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-m
     _t=$(mktemp -d)
     curl -fsSL -m30 "${_CB}/wg-obfuscator-${_OBF_TAG}-${_ss}.tar.gz" -o "$_t/o.tgz" 2>/dev/null &&
       tar -xzf "$_t/o.tgz" -C "$_t" 2>/dev/null &&
-      _b=$(find "$_t" -name "wg-obfuscator" | head -1) &&
+      _b=$(find "$_t" -name "wg-obfuscator" -type f | head -1) &&
       [ -n "$_b" ] && cp "$_b" "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" && chmod +x "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" && echo "  +wg-obfuscator-${_da} (ClusterM ${_OBF_TAG})"
     rm -rf "$_t"
   fi

@@ -209,8 +209,21 @@ action_package() {
   cp "$dir/${id}.conf" "$pkg_root/${id}.conf"
   cp "$dir/wg-obfuscator.conf" "$pkg_root/wg-obfuscator.conf"
 
-  for arch in mipsel mips aarch64 armv7 x86_64; do
-    [[ -f "$PHOBOS_DIR/bin/wg-obfuscator-$arch" ]] && cp "$PHOBOS_DIR/bin/wg-obfuscator-$arch" "$pkg_root/bin/"
+  # Fetch missing router-arch binaries from ClusterM on-demand (Ground-Zerro = x86_64 only)
+  local _tag; _tag=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+  local _cb="https://github.com/ClusterM/wg-obfuscator/releases/download/${_tag}"
+  declare -A _am=([aarch64]="linux-arm64" [mipsel]="linux-mipsel-mips32" [mips]="linux-mips-mips32" [armv7]="linux-armv7-hf" [x86_64]="linux-x64")
+  for _arch in aarch64 mipsel mips armv7 x86_64; do
+    if [[ ! -f "$PHOBOS_DIR/bin/wg-obfuscator-$_arch" ]] && [[ -n "$_tag" ]]; then
+      local _t; _t=$(mktemp -d)
+      if curl -fsSL -m30 "${_cb}/wg-obfuscator-${_tag}-${_am[$_arch]}.tar.gz" -o "$_t/o.tgz" 2>/dev/null; then
+        tar -xzf "$_t/o.tgz" -C "$_t" 2>/dev/null || true
+        local _b; _b=$(find "$_t" -name "wg-obfuscator" -type f | head -1)
+        [[ -n "$_b" ]] && cp "$_b" "$PHOBOS_DIR/bin/wg-obfuscator-$_arch" && chmod +x "$PHOBOS_DIR/bin/wg-obfuscator-$_arch" && log_info "+wg-obfuscator-$_arch (ClusterM ${_tag})"
+      fi
+      rm -rf "$_t"
+    fi
+    [[ -f "$PHOBOS_DIR/bin/wg-obfuscator-$_arch" ]] && cp "$PHOBOS_DIR/bin/wg-obfuscator-$_arch" "$pkg_root/bin/"
   done
 
   local tpl_dir="$REPO_DIR/client/templates"
