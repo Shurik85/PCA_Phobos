@@ -721,9 +721,44 @@ def build_phone_config(cid, mode="android"):
     if os.path.exists(instpath):
         inst = open(instpath).read().strip()
     conf = wg + "\n\n" + inst + "\n"
-    b64 = base64.urlsafe_b64encode(conf.encode()).decode().rstrip("=")
-    link = "phobos://" + b64 + "#" + urllib.parse.quote(cid)
+    # PhobosWG requires ALL fields present; missing -> "= none" before base64
+    # (spec 2.3). Ground-Zerro configs lack PresharedKey -> import fails otherwise.
+    padded = _pad_conf_with_none(conf)
+    b64 = base64.urlsafe_b64encode(padded.encode()).decode().rstrip("=")
+    link = "phobos://" + b64 + "#" + urllib.parse.quote(cid or "none")
     return conf, link
+
+
+def _pad_conf_with_none(conf):
+    """Insert '<key> = none' for every missing mandatory PhobosWG field
+    (phobos:// spec 2.3). Only for phobos:// payload, NOT raw .conf."""
+    mandatory = {
+        "[interface]": ["PrivateKey", "Address", "MTU", "DNS"],
+        "[peer]": ["PublicKey", "PresharedKey", "AllowedIPs", "PersistentKeepalive", "Endpoint"],
+        "[instance]": ["source-if", "source-lport", "target", "key", "masking",
+                       "verbose", "idle-timeout", "max-dummy"],
+    }
+    sections = []
+    cur = None
+    for ln in conf.split("\n"):
+        s = ln.strip()
+        if s.startswith("[") and s.endswith("]"):
+            cur = [s, []]
+            sections.append(cur)
+        elif cur is not None:
+            cur[1].append(ln)
+    out = []
+    for header, lines in sections:
+        keys = {ln.split("=", 1)[0].strip().lower() for ln in lines if "=" in ln}
+        while lines and lines[-1].strip() == "":
+            lines.pop()
+        for req in mandatory.get(header.lower(), []):
+            if req.lower() not in keys:
+                lines.append("%s = none" % req)
+        out.append(header)
+        out.extend(lines)
+        out.append("")
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 def qr_datauri(data):
