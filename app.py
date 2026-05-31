@@ -1615,15 +1615,7 @@ def panel_port():
 
 def install_command(token, port=None):
     port = port or panel_port()
-    urls = [f"http://{SERVER_IP}:{port}/init/{token}.sh", f"http://{SERVER_IP}/init/{token}.sh"]
-    return ("tmp=/tmp/phobos-init-$$.sh; ok=0; "
-            f"for u in {' '.join(urls)}; do "
-            "rm -f $tmp; "
-            "(wget -q -O $tmp $u || curl -fsSL -o $tmp $u) 2>/dev/null || continue; "
-            "grep -qi '<html' $tmp && continue; "
-            "head -1 $tmp | grep -q '^#!' || continue; "
-            "sh $tmp; ok=1; break; "
-            "done; rm -f $tmp; [ $ok -eq 1 ] || echo 'ERROR: install script download failed (got HTML/proxy page or timeout)'")
+    return f"wget -O - http://{SERVER_IP}:{port}/init/{token}.sh | sh"
 
 
 @app.route("/init/<path:name>")
