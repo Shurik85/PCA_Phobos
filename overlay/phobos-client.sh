@@ -7,9 +7,10 @@ load_env
 ensure_dirs
 
 # server.env stores OBFUSCATOR_PORTS (plural, comma list). Client obfuscator
-# must target an ACTUAL listening port — derive single port from the first one.
-# (Bug: default 51821 was never listened on -> client handshake failed.)
-OBFUSCATOR_PORT="${OBFUSCATOR_PORT:-$(echo "${OBFUSCATOR_PORTS:-51821}" | cut -d',' -f1)}"
+# must target an ACTUAL listening port. lib-core load_env defaults OBFUSCATOR_PORT
+# to 51821 (NOT listened on) -> handshake failed. Override unconditionally from
+# the real port list when present.
+[ -n "${OBFUSCATOR_PORTS:-}" ] && export OBFUSCATOR_PORT="$(echo "$OBFUSCATOR_PORTS" | cut -d',' -f1)"
 
 CMD="${1:-help}"
 CLIENT_ARG="${2:-}"
