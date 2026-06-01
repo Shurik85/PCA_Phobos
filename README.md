@@ -156,24 +156,26 @@ bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main
 
 ## Возможные проблемы и решения
 
-| Симптом | Причина | Решение |
-|---------|---------|---------|
-| **Команда установки → 403 / не качается** | репозиторий приватный | Сделай репозиторий публичным, либо ставь с токеном: `GH_TOKEN=ghp_xxx bash <(curl -fsSL -H "Authorization: token ghp_xxx" .../install.sh)` |
-| **Панель не открывается** | панель перезапускалась (обновление) / сервер недоступен | Подожди 5 сек, обнови страницу. Проверь: `systemctl status phobos-panel` |
-| **Клиент Offline, хотя работает** | роутер на резервном сервере | Норма — статус считается по handshake на **любом** сервере; обнови страницу |
-| **«SSH timeout» при тесте роутера** | роутер за NAT, входящий SSH закрыт | Это нормально — управление идёт по pull-каналу через туннель, SSH не нужен |
-| **У роутера нет интернета на LAN-устройствах** | WG-интерфейс `private` / нет привязки устройства к политике | На роутере: `security-level public` + `ip hotspot host <mac> policy <PolicyName>`; health-скрипт чинит это сам в течение ~5 мин |
-| **Роутер не поднялся после перезагрузки** | Entware/USB не запустил автозагрузку | Сторож (watchdog) поднимет за ~3 мин (нужны KeenDNS + web-логин роутера в `router_access`), либо перезагрузи роутер ещё раз |
-| **iPhone не подключается по `phobos://`** | на iOS нет приложения-обфускатора | Используй 🍎-конфиг (обычный WireGuard) + открой 51820 (`ALLOW_PLAIN_WG=1`) |
-| **Смена сервера применяется не сразу** | роутер тянет конфиг по cron | Применяется за ~12–15 сек, не мгновенно |
-| **Забыл порт панели** | случайный порт | `cat /opt/phobos-panel/.port` |
-| **Забыл API key** | | `grep server_api_key /opt/phobos-panel/settings.json` |
-| **PhobosWG: «невозможно импортировать туннель»** | старая панель генерила неполный `phobos://` (без `PresharedKey`) | Обнови панель, заново скопируй `phobos://`-ссылку или пересканируй QR. Исправлено в v1.2.7 |
-| **Роутер aarch64: «бинарник не найден в архиве»** | Ground-Zerro раздаёт только x86_64 | Обнови (`phobos-update`) — aarch64/mipsel/armv7 авто-качаются из ClusterM, затем пересоздай клиента. Исправлено в v1.2.6 |
-| **Клиент не подключается, «НЕТ СОЕДИНЕНИЯ»** | клиентский обфускатор целился в неверный порт (51821) | Обнови панель → **пересоздай клиента** → переустанови на роутере. Порт берётся из `OBFUSCATOR_PORTS` |
-| **Удалить сервер полностью** | | `bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/uninstall.sh)` |
+Подробный разбор вынесен в отдельный файл:
 
-Логи: `journalctl -u phobos-panel -n 50` · сторож: `/opt/Phobos/server/watchdog.log` · роутер: `/opt/etc/Phobos/health.log`.
+**[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — установка сервера, роутеры, Android/iOS, secondary API, failover, Telegram, обновление, удаление, логи и что писать в issue.
+
+Самые частые быстрые проверки:
+
+```bash
+phobos-update stable
+systemctl status phobos-panel --no-pager
+journalctl -u phobos-panel -n 80 --no-pager
+cat /opt/phobos-panel/.port
+```
+
+На роутере:
+
+```sh
+/opt/etc/init.d/S49wg-obfuscator status
+tail -n 80 /opt/etc/Phobos/health.log
+grep '^SERVER_' /opt/etc/Phobos/failover.conf
+```
 
 ---
 
