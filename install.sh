@@ -195,6 +195,7 @@ EOF
 # ── 6. PCA patches over onboarding scripts + server-side helpers ──
 echo "[6/9] PCA patches (tunnel-pull, self-heal, watchdog, 403 fix)..."
 fetch() {
+    mkdir -p "$(dirname "$2")"
     if [ -n "$GH_TOKEN" ]; then
         curl -fsSL -m20 -H "Authorization: token $GH_TOKEN" "$RAW/$1" -o "$2" && return 0
     else
