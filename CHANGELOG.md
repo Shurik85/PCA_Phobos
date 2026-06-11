@@ -21,6 +21,9 @@ phobos-update beta      # или: phobos-update dev
 
 ## stable
 
+### v1.2.8
+- **fix:** установка `wg-obfuscator` на x86_64 больше не падает с `ERROR: obfuscator binary for x86_64 missing`. Если бинарника нет в Ground-Zerro, installer и secondary installer берут `linux-x64` из ClusterM releases.
+
 ### v1.2.7
 - **fix:** импорт `phobos://` в PhobosWG. Конфиги дополняются `= none` для недостающих полей (`PresharedKey` и др.) перед base64 — иначе приложение писало «невозможно импортировать туннель».
 
@@ -49,6 +52,7 @@ phobos-update beta      # или: phobos-update dev
 |--------|----------|---------|
 | 1.2.7 / 1.3.x | PhobosWG: «невозможно импортировать туннель» | `phobos://` дополняется `= none` для всех обязательных полей (`PresharedKey`) по спеке формата |
 | 1.2.8 / 1.3.x | Stable не показывал кнопку скачивания APK без локального файла | кнопка **PhobosWG (APK)** всегда доступна на Android-странице; `/download/apk` ведет на public stable release |
+| 1.2.8 / 1.3.x | VPS x86_64: `ERROR: obfuscator binary for x86_64 missing` | авто-загрузка `linux-x64` из ClusterM releases + нормализация `amd64 -> x86_64` |
 | 1.2.6 / 1.3.x | Роутер aarch64: «бинарник не найден в архиве» | авто-загрузка aarch64/mipsel/armv7 из ClusterM releases |
 | (внутр.) | Клиент не подключается, «НЕТ СОЕДИНЕНИЯ», handshake не встаёт | клиентский обфускатор целился в порт 51821 (никто не слушал); теперь берёт первый из `OBFUSCATOR_PORTS` (2083) |
 | (внутр.) | агент secondary не обновлялся через `phobos-update` | `server/api.py` добавлен в managed_files |

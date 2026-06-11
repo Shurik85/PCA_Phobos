@@ -135,6 +135,10 @@ echo "[2/7] Getting Phobos binaries..."
 mkdir -p "$PHOBOS_DIR"/{server,clients,bin}
 
 if [ ! -f /usr/local/bin/wg-obfuscator ]; then
+    ARCH="$(uname -m)"
+    OBF_ARCH="$ARCH"
+    [ "$OBF_ARCH" = "amd64" ] && OBF_ARCH="x86_64"
+    [ "$OBF_ARCH" = "arm64" ] && OBF_ARCH="aarch64"
     REPO_DIR="/tmp/phobos-repo"
     rm -rf "$REPO_DIR"
     mkdir -p "$REPO_DIR"
@@ -144,10 +148,34 @@ if [ ! -f /usr/local/bin/wg-obfuscator ]; then
     git config core.sparseCheckout true
     echo "wg-obfuscator" > .git/info/sparse-checkout
     git pull origin main -q 2>/dev/null
-    cp -f wg-obfuscator/bin/wg-obfuscator-$(uname -m) "$PHOBOS_DIR/bin/" 2>/dev/null || true
-    chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-*
-    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-$(uname -m)" /usr/local/bin/wg-obfuscator
+    cp -f wg-obfuscator/bin/wg-obfuscator-* "$PHOBOS_DIR/bin/" 2>/dev/null || true
+    chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-* 2>/dev/null || true
+    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${OBF_ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
     rm -rf "$REPO_DIR"
+
+    if [ ! -x /usr/local/bin/wg-obfuscator ]; then
+        OBF_TAG=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
+        CB="https://github.com/ClusterM/wg-obfuscator/releases/download/${OBF_TAG}"
+        for MAP in "x86_64:linux-x64" "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-mips32" "armv7:linux-armv7-hf"; do
+            DA="${MAP%%:*}"
+            SS="${MAP##*:}"
+            [ "$DA" = "$OBF_ARCH" ] || continue
+            [ -n "$OBF_TAG" ] || continue
+            TMP_DIR=$(mktemp -d)
+            if curl -fsSL -m30 "${CB}/wg-obfuscator-${OBF_TAG}-${SS}.tar.gz" -o "$TMP_DIR/o.tgz" 2>/dev/null &&
+               tar -xzf "$TMP_DIR/o.tgz" -C "$TMP_DIR" 2>/dev/null; then
+                BIN_PATH=$(find "$TMP_DIR" -name "wg-obfuscator" -type f | head -1)
+                if [ -n "$BIN_PATH" ]; then
+                    cp "$BIN_PATH" "$PHOBOS_DIR/bin/wg-obfuscator-${DA}"
+                    chmod +x "$PHOBOS_DIR/bin/wg-obfuscator-${DA}"
+                    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${DA}" /usr/local/bin/wg-obfuscator
+                fi
+            fi
+            rm -rf "$TMP_DIR"
+        done
+    fi
+
+    [ -x /usr/local/bin/wg-obfuscator ] || { echo "ERROR: obfuscator binary for $ARCH missing"; exit 1; }
     echo "   Obfuscator installed."
 else
     echo "   Obfuscator already installed, skipping."

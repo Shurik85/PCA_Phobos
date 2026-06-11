@@ -80,6 +80,9 @@ systemctl enable cron -q 2>/dev/null || true; systemctl start cron 2>/dev/null |
 # ── 2. wg-obfuscator binary (Ground-Zerro) ──
 echo "[2/9] wg-obfuscator..."
 mkdir -p "$PHOBOS_DIR"/{server,clients,bin,tokens,www/init,www/packages,packages}
+OBF_ARCH="$ARCH"
+[ "$OBF_ARCH" = "amd64" ] && OBF_ARCH="x86_64"
+[ "$OBF_ARCH" = "arm64" ] && OBF_ARCH="aarch64"
 if [ ! -x /usr/local/bin/wg-obfuscator ]; then
     R=/tmp/phobos-obf; rm -rf "$R"; mkdir -p "$R"; cd "$R"
     git init -q; git remote add origin https://github.com/Ground-Zerro/Phobos.git
@@ -87,12 +90,12 @@ if [ ! -x /usr/local/bin/wg-obfuscator ]; then
     git pull origin main -q
     cp -f "wg-obfuscator/bin/"wg-obfuscator-* "$PHOBOS_DIR/bin/" 2>/dev/null || true
     chmod +x "$PHOBOS_DIR/bin/"wg-obfuscator-* 2>/dev/null || true
-    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
+    ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${OBF_ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
     cd /; rm -rf "$R"
 fi
 _OBF_TAG=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
 _CB="https://github.com/ClusterM/wg-obfuscator/releases/download/${_OBF_TAG}"
-for _am in "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-mips32" "armv7:linux-armv7-hf"; do
+for _am in "x86_64:linux-x64" "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-mips32" "armv7:linux-armv7-hf"; do
   _da="${_am%%:*}"; _ss="${_am##*:}"
   if [ ! -f "$PHOBOS_DIR/bin/wg-obfuscator-${_da}" ] && [ -n "$_OBF_TAG" ]; then
     _t=$(mktemp -d)
@@ -103,7 +106,7 @@ for _am in "aarch64:linux-arm64" "mipsel:linux-mipsel-mips32" "mips:linux-mips-m
     rm -rf "$_t"
   fi
 done
-[ -x /usr/local/bin/wg-obfuscator ] || ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
+[ -x /usr/local/bin/wg-obfuscator ] || ln -sf "$PHOBOS_DIR/bin/wg-obfuscator-${OBF_ARCH}" /usr/local/bin/wg-obfuscator 2>/dev/null || true
 [ -x /usr/local/bin/wg-obfuscator ] || { echo "ERROR: obfuscator binary for $ARCH missing"; exit 1; }
 echo "  bins: $(ls $PHOBOS_DIR/bin/ | tr '\n' ' ')"
 
