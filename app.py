@@ -1367,7 +1367,7 @@ def clients_page():
     <h2>{tr("VPN-клиенты", "VPN Clients")}</h2>
     <form method="post" class="form-row" style="margin-bottom:16px">
     <input type="hidden" name="action" value="add">
-    <input type="text" name="name" placeholder="{tr('Имя нового клиента', 'New client name')}" pattern="[a-zA-Z0-9_-]+" required>
+    <input type="text" name="name" placeholder="{tr('Имя нового клиента', 'New client name')}" pattern="[A-Za-z0-9_\\-]+" required>
     <button class="btn btn-primary" type="submit">{tr("Добавить", "Add")}</button>
     {hlp("Создать нового VPN-клиента (роутер/устройство). Имя — латиница, цифры, _ и -. После создания выдай команду установки на роутер.", "Create a new VPN client (router/device). Name: letters, digits, _ and -. After creation, run the install command on the router.")}
     </form>

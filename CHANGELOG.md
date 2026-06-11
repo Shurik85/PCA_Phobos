@@ -22,6 +22,7 @@ phobos-update beta      # или: phobos-update dev
 ## stable
 
 ### v1.2.8
+- **fix:** поле имени клиента больше не даёт ошибку в консоли Chrome из-за HTML `pattern`.
 - **fix:** fresh stable install теперь кладёт обязательный `lib-core.sh` рядом с `phobos-client.sh`, поэтому `/clients` не сыпется на `check_root/load_env/die/log_*: command not found`.
 - **fix:** шаг `[6/9] PCA patches` больше не падает с `curl: (23) Failure writing output to destination`, если папки `repo/server/scripts` или `repo/client/templates` не были созданы upstream sparse clone.
 - **fix:** установка `wg-obfuscator` на x86_64 больше не падает с `ERROR: obfuscator binary for x86_64 missing`. Если бинарника нет в Ground-Zerro, installer и secondary installer берут `linux-x64` из ClusterM releases.
