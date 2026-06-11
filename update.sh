@@ -47,6 +47,7 @@ gh_curl() {  # $1=ref, rest=curl args
 managed_files() {
 cat <<LIST
 $PANEL_DIR/app.py|app.py
+$PHOBOS_DIR/repo/server/scripts/lib-core.sh|overlay/lib-core.sh
 $PHOBOS_DIR/repo/server/scripts/phobos-client.sh|overlay/phobos-client.sh
 $PHOBOS_DIR/repo/client/templates/install-router.sh.template|overlay/install-router.sh.template
 $PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh|overlay/router-configure-wireguard.sh

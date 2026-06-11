@@ -203,6 +203,7 @@ fetch() {
     fi
     echo "  WARN: fetch $1 failed"; return 1
 }
+fetch overlay/lib-core.sh                      "$PHOBOS_DIR/repo/server/scripts/lib-core.sh"             && chmod +x "$PHOBOS_DIR/repo/server/scripts/lib-core.sh"
 fetch overlay/phobos-client.sh                 "$PHOBOS_DIR/repo/server/scripts/phobos-client.sh"        && chmod +x "$PHOBOS_DIR/repo/server/scripts/phobos-client.sh"
 fetch overlay/install-router.sh.template       "$PHOBOS_DIR/repo/client/templates/install-router.sh.template"
 fetch overlay/router-configure-wireguard.sh    "$PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh" && chmod +x "$PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh"
