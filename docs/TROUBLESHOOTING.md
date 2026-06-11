@@ -67,6 +67,94 @@ curl -I -H "Authorization: token ваш_ключ" \
 https://raw.githubusercontent.com/andrey271192/PCA_Phobos-dev/beta/install.sh
 ```
 
+### `[2/9] wg-obfuscator`: `ERROR: obfuscator binary for x86_64 missing`
+
+Это ошибка скачивания бинарника обфускатора под архитектуру VPS. Обычно сервер `x86_64`, а в скачанном наборе нет файла с ожидаемым именем.
+
+Проверка:
+
+```bash
+uname -m
+ls -lah /opt/Phobos/bin 2>/dev/null
+```
+
+Решение:
+
+```bash
+phobos-update stable
+```
+
+Если установка ещё не дошла до `phobos-update`, запусти свежий installer:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+```
+
+В актуальной версии installer берёт `linux-x64` из ClusterM releases и понимает `amd64 -> x86_64`.
+
+### `[6/9] PCA patches`: `curl: (23) Failure writing output to destination`
+
+Это не ошибка firewall и не порт WireGuard. `curl` не смог записать файл в путь назначения. Частая причина: папки `/opt/Phobos/repo/server/scripts` или `/opt/Phobos/repo/client/templates` ещё не были созданы.
+
+Решение:
+
+```bash
+phobos-update stable
+```
+
+Если сервер ставится с нуля и ещё нет `phobos-update`, повтори установку свежим installer:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/install.sh)
+```
+
+В актуальной версии `fetch()` сам создаёт папку назначения перед `curl -o`.
+
+### `/clients`: `lib-core.sh: No such file or directory`, `check_root: command not found`
+
+Так выглядит неполная установка client helper. Файл `phobos-client.sh` уже есть, но рядом нет обязательного `lib-core.sh`. После этого скрипт теряет функции `check_root`, `load_env`, `ensure_dirs`, `die`, `log_info`, и появляются каскадные ошибки.
+
+Быстрое лечение без переустановки:
+
+```bash
+mkdir -p /opt/Phobos/repo/server/scripts
+curl -fsSL https://raw.githubusercontent.com/andrey271192/PCA_Phobos/main/overlay/lib-core.sh \
+  -o /opt/Phobos/repo/server/scripts/lib-core.sh
+chmod +x /opt/Phobos/repo/server/scripts/lib-core.sh
+phobos-update stable
+systemctl restart phobos-panel
+```
+
+Проверка:
+
+```bash
+test -f /opt/Phobos/repo/server/scripts/lib-core.sh && echo LIB_CORE_OK
+/opt/Phobos/repo/server/scripts/phobos-client.sh list
+```
+
+### В Chrome консоли: `Pattern attribute value ... is not a valid regular expression`
+
+Старый HTML pattern для имени клиента мог ругаться в новых версиях Chrome.
+
+Решение:
+
+```bash
+phobos-update stable
+systemctl restart phobos-panel
+```
+
+После обновления в `/opt/phobos-panel/app.py` должно быть:
+
+```bash
+grep 'pattern=' /opt/phobos-panel/app.py
+```
+
+Ожидаемо:
+
+```text
+pattern="[A-Za-z0-9_\\-]+"
+```
+
 ### Панель не открывается
 
 Проверь реальный порт панели:
