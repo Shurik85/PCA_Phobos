@@ -140,6 +140,7 @@ test -f /opt/Phobos/repo/server/scripts/lib-core.sh && echo LIB_CORE_OK
 
 ```bash
 phobos-update stable
+phobos-self-check --fix
 systemctl restart phobos-panel
 ```
 
@@ -570,6 +571,8 @@ systemctl restart phobos-panel
 2. Нажми Android/PhobosWG.
 3. Сканируй новый QR или копируй новую `phobos://` ссылку.
 4. Если клиент был создан старой версией и ошибка осталась, создай нового клиента именно для телефона.
+
+В новых версиях `install.sh` и `phobos-update` запускают `phobos-self-check --fix` сами. Команда нужна только если хочешь повторно прогнать проверку на уже установленном сервере.
 
 ### Android импорт прошел, но интернета нет
 

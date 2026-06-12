@@ -215,11 +215,13 @@ fetch overlay/phobos-pull.sh                    "$PHOBOS_DIR/repo/client/templat
 fetch overlay/phobos-uninstall.sh              "$PHOBOS_DIR/repo/client/templates/phobos-uninstall.sh"   && chmod +x "$PHOBOS_DIR/repo/client/templates/phobos-uninstall.sh"
 fetch overlay/3xui.sh                          "$PHOBOS_DIR/repo/client/templates/3xui.sh"               && chmod +x "$PHOBOS_DIR/repo/client/templates/3xui.sh"
 fetch server/phobos-health.sh                   "$PHOBOS_DIR/server/phobos-health.sh"                     && chmod +x "$PHOBOS_DIR/server/phobos-health.sh"
+fetch server/phobos-self-check.sh               "$PHOBOS_DIR/server/phobos-self-check.sh"                 && chmod +x "$PHOBOS_DIR/server/phobos-self-check.sh" && ln -sf "$PHOBOS_DIR/server/phobos-self-check.sh" /usr/local/bin/phobos-self-check
 fetch server/phobos-pull.sh                     "$PHOBOS_DIR/server/phobos-pull.sh"                       && chmod +x "$PHOBOS_DIR/server/phobos-pull.sh"
 fetch server/phobos-router-watchdog.py          "$PHOBOS_DIR/server/phobos-router-watchdog.py"
 fetch update.sh                                 "$PHOBOS_DIR/server/update.sh"             && chmod +x "$PHOBOS_DIR/server/update.sh" && ln -sf "$PHOBOS_DIR/server/update.sh" /usr/local/bin/phobos-update
 mkdir -p "$PANEL_DIR"; fetch VERSION "$PANEL_DIR/.version" 2>/dev/null || true
 [ -f "$PHOBOS_DIR/tokens/tokens.json" ] || echo '[]' > "$PHOBOS_DIR/tokens/tokens.json"
+"$PHOBOS_DIR/server/phobos-self-check.sh" --fix
 
 # ── 7. web panel ──
 echo "[7/9] web panel..."

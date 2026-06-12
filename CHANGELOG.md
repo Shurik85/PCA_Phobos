@@ -22,6 +22,7 @@ phobos-update beta      # или: phobos-update dev
 ## stable
 
 ### v1.2.8
+- **fix:** install/update теперь запускают `phobos-self-check --fix`: автоматически чинят потерянный `=` в `SERVER_WG_PUBLIC_KEY`, сверяют ключ с `wg0`, проверяют router helper-файлы и shell syntax до выдачи клиентских ссылок.
 - **fix:** Android/iOS phone configs теперь восстанавливают потерянный `=` в WireGuard `PrivateKey/PublicKey/PresharedKey`. Это закрывает ошибку PhobosWG «Неправильная длина ключа в PublicKey».
 - **fix:** `lib-core.sh` больше не теряет финальный `=` при чтении `server.env`, поэтому новые клиентские `.conf` получают полный `PublicKey`.
 - **fix:** Android PhobosWG больше не получает `PresharedKey = none` в phobos payload, из-за чего импорт мог падать с «Неправильная длина ключа в PublicKey».
@@ -60,6 +61,7 @@ phobos-update beta      # или: phobos-update dev
 | 1.2.7 / 1.3.x | PhobosWG: «невозможно импортировать туннель» | `phobos://` дополняется `= none` для всех обязательных полей (`PresharedKey`) по спеке формата |
 | 1.2.8 / 1.3.x | Stable не показывал кнопку скачивания APK без локального файла | кнопка **PhobosWG (APK)** всегда доступна на Android-странице; `/download/apk` ведет на public stable release |
 | 1.2.8 / 1.3.x | Android PhobosWG: «Неправильная длина ключа в PublicKey» | Android/iOS payload восстанавливает потерянный `=` в WireGuard ключах и не добавляет `PresharedKey = none`; QR/link нужно открыть заново |
+| 1.2.8 / 1.3.x | Установка/обновление могли пройти, но потом панель генерила кривую ссылку | `phobos-self-check --fix` встроен в install/update и доступен как отдельная команда |
 | 1.2.8 / 1.3.x | Router init: `can't open './lib-client.sh'` | обязательные router helper-скрипты добавлены в PCA overlay и managed update |
 | 1.2.8 / 1.3.x | Stable `/clients`: `lib-core.sh: No such file or directory`, `check_root/load_env: command not found` | `lib-core.sh` добавлен в public repo, installer и updater |
 | 1.2.8 / 1.3.x | Install `[6/9] PCA patches`: `curl: (23) Failure writing output to destination` | `fetch()` создаёт папку назначения перед `curl -o` |

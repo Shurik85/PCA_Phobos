@@ -59,10 +59,20 @@ $PHOBOS_DIR/repo/client/templates/phobos-pull.sh|overlay/phobos-pull.sh
 $PHOBOS_DIR/repo/client/templates/phobos-uninstall.sh|overlay/phobos-uninstall.sh
 $PHOBOS_DIR/repo/client/templates/3xui.sh|overlay/3xui.sh
 $PHOBOS_DIR/server/phobos-health.sh|server/phobos-health.sh
+$PHOBOS_DIR/server/phobos-self-check.sh|server/phobos-self-check.sh
 $PHOBOS_DIR/server/phobos-pull.sh|server/phobos-pull.sh
 $PHOBOS_DIR/server/phobos-router-watchdog.py|server/phobos-router-watchdog.py
 $PHOBOS_DIR/server/update.sh|update.sh
 LIST
+}
+
+run_self_check() {
+    if [ -x "$PHOBOS_DIR/server/phobos-self-check.sh" ]; then
+        ln -sf "$PHOBOS_DIR/server/phobos-self-check.sh" /usr/local/bin/phobos-self-check 2>/dev/null || true
+        "$PHOBOS_DIR/server/phobos-self-check.sh" --fix
+    else
+        echo "  WARN: phobos-self-check.sh не найден"
+    fi
 }
 
 # fetch VERSION of a channel (public repos / or private if token present)
@@ -139,6 +149,7 @@ case "${1:-}" in
         [ -f "$last/$rp" ] && { mkdir -p "$(dirname "$lp")"; cp "$last/$rp" "$lp"; chmod +x "$lp" 2>/dev/null || true; }
     done
     echo "$fromver" > "$VERFILE"
+    run_self_check
     systemctl restart phobos-panel 2>/dev/null || true
     echo "Откат выполнен -> $fromver"
     ;;
@@ -167,6 +178,7 @@ case "${1:-}" in
     echo "Текущая: $CUR  ->  целевая: $target  ($ref)"
     b=$(do_backup); echo "Бэкап: $b"
     apply_ref "$ref"
+    run_self_check
     echo "$target" > "$VERFILE"
     systemctl restart phobos-panel 2>/dev/null || true
     echo "Обновлено до $target. Откат: phobos-update --rollback"
