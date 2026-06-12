@@ -713,20 +713,17 @@ def build_phone_config(cid, mode="android"):
     if os.path.exists(instpath):
         inst = open(instpath).read().strip()
     conf = wg + "\n\n" + inst + "\n"
-    # PhobosWG requires ALL fields present; missing -> "= none" before base64
-    # (spec 2.3). Ground-Zerro configs lack PresharedKey -> import fails otherwise.
-    padded = _pad_conf_with_none(conf)
-    b64 = base64.urlsafe_b64encode(padded.encode()).decode().rstrip("=")
+    payload = _prepare_phoboswg_payload(conf)
+    b64 = base64.urlsafe_b64encode(payload.encode()).decode()
     link = "phobos://" + b64 + "#" + urllib.parse.quote(cid or "none")
-    return conf, link
+    return payload, link
 
 
-def _pad_conf_with_none(conf):
-    """Insert '<key> = none' for every missing mandatory PhobosWG field
-    (phobos:// spec 2.3). Only for phobos:// payload, NOT raw .conf."""
+def _prepare_phoboswg_payload(conf):
+    """Normalize Android PhobosWG phobos:// payload. Do not use for raw .conf."""
     mandatory = {
         "[interface]": ["PrivateKey", "Address", "MTU", "DNS"],
-        "[peer]": ["PublicKey", "PresharedKey", "AllowedIPs", "PersistentKeepalive", "Endpoint"],
+        "[peer]": ["PublicKey", "AllowedIPs", "PersistentKeepalive", "Endpoint"],
         "[instance]": ["source-if", "source-lport", "target", "key", "masking",
                        "verbose", "idle-timeout", "max-dummy"],
     }
@@ -741,6 +738,27 @@ def _pad_conf_with_none(conf):
             cur[1].append(ln)
     out = []
     for header, lines in sections:
+        normalized = []
+        for ln in lines:
+            if "=" not in ln:
+                normalized.append(ln)
+                continue
+            key, value = ln.split("=", 1)
+            k = key.strip().lower()
+            v = value.strip()
+            if k == "presharedkey" and v.lower() in ("", "none"):
+                continue
+            if header.lower() == "[peer]" and k == "allowedips":
+                parts = [p.strip() for p in v.split(",") if p.strip()]
+                if "0.0.0.0/0" not in parts:
+                    parts.insert(0, "0.0.0.0/0")
+                if "::/0" not in parts:
+                    parts.append("::/0")
+                ln = "%s = %s" % (key.strip(), ", ".join(parts))
+            elif header.lower() == "[instance]" and k == "masking" and v.upper() == "AUTO":
+                ln = "%s = STUN" % key.strip()
+            normalized.append(ln)
+        lines = normalized
         keys = {ln.split("=", 1)[0].strip().lower() for ln in lines if "=" in ln}
         while lines and lines[-1].strip() == "":
             lines.pop()
@@ -751,6 +769,11 @@ def _pad_conf_with_none(conf):
         out.extend(lines)
         out.append("")
     return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _pad_conf_with_none(conf):
+    """Legacy helper kept for old endpoints that may call it."""
+    return _prepare_phoboswg_payload(conf)
 
 
 def qr_datauri(data):

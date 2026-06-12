@@ -259,6 +259,26 @@ phobos-update stable
 
 Потом вставь новую команду установки на роутере.
 
+### Команда на роутере пишет `line 8: can't open './lib-client.sh'`
+
+Причина: пакет клиента собран без обязательных helper-файлов (`lib-client.sh`, `install-obfuscator.sh`, `install-wireguard.sh`). Это происходило, когда installer брал часть templates из внешнего upstream repo, где эти файлы могли отсутствовать.
+
+Решение на сервере:
+
+```bash
+phobos-update stable
+/opt/Phobos/repo/server/scripts/phobos-client.sh package CLIENT_ID
+/opt/Phobos/repo/server/scripts/phobos-client.sh link CLIENT_ID
+```
+
+Потом скопируй новую команду установки из панели и запусти её на роутере.
+
+Проверка пакета:
+
+```bash
+tar tzf /opt/Phobos/packages/phobos-CLIENT_ID.tar.gz | grep -E 'lib-client.sh|install-obfuscator.sh|install-wireguard.sh'
+```
+
 ### Пакет битый: `Bad package`, `not in gzip format`, HTML вместо tar.gz
 
 Роутер скачал не пакет, а страницу ошибки.
@@ -532,6 +552,24 @@ phobos-update stable
 ```
 
 Потом заново открой Android-страницу клиента и сканируй QR прямо с панели. Если не помогло, создай нового клиента для телефона. Один клиент = одно устройство; роутер и телефон должны иметь разные клиенты.
+
+### Android PhobosWG: `Неправильная длина ключа в PublicKey`
+
+Причина: старый phobos payload мог добавлять `PresharedKey = none` или отдавать старый QR/ссылку после обновления панели. PhobosWG воспринимает это как битый ключ.
+
+Решение:
+
+```bash
+phobos-update stable
+systemctl restart phobos-panel
+```
+
+Потом:
+
+1. Открой клиента в панели заново.
+2. Нажми Android/PhobosWG.
+3. Сканируй новый QR или копируй новую `phobos://` ссылку.
+4. Если клиент был создан старой версией и ошибка осталась, создай нового клиента именно для телефона.
 
 ### Android импорт прошел, но интернета нет
 

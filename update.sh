@@ -50,8 +50,14 @@ $PANEL_DIR/app.py|app.py
 $PHOBOS_DIR/repo/server/scripts/lib-core.sh|overlay/lib-core.sh
 $PHOBOS_DIR/repo/server/scripts/phobos-client.sh|overlay/phobos-client.sh
 $PHOBOS_DIR/repo/client/templates/install-router.sh.template|overlay/install-router.sh.template
+$PHOBOS_DIR/repo/client/templates/lib-client.sh|overlay/lib-client.sh
+$PHOBOS_DIR/repo/client/templates/install-obfuscator.sh|overlay/install-obfuscator.sh
+$PHOBOS_DIR/repo/client/templates/install-wireguard.sh|overlay/install-wireguard.sh
 $PHOBOS_DIR/repo/client/templates/router-configure-wireguard.sh|overlay/router-configure-wireguard.sh
+$PHOBOS_DIR/repo/client/templates/router-configure-wireguard-openwrt.sh|overlay/router-configure-wireguard-openwrt.sh
 $PHOBOS_DIR/repo/client/templates/phobos-pull.sh|overlay/phobos-pull.sh
+$PHOBOS_DIR/repo/client/templates/phobos-uninstall.sh|overlay/phobos-uninstall.sh
+$PHOBOS_DIR/repo/client/templates/3xui.sh|overlay/3xui.sh
 $PHOBOS_DIR/server/phobos-health.sh|server/phobos-health.sh
 $PHOBOS_DIR/server/phobos-pull.sh|server/phobos-pull.sh
 $PHOBOS_DIR/server/phobos-router-watchdog.py|server/phobos-router-watchdog.py

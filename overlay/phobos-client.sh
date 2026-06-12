@@ -216,7 +216,7 @@ action_package() {
   cp "$dir/wg-obfuscator.conf" "$pkg_root/wg-obfuscator.conf"
 
   # Fetch missing router-arch binaries from ClusterM on-demand
-  local _tag; _tag=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*//')
+  local _tag; _tag=$(curl -fsSL -m10 https://api.github.com/repos/ClusterM/wg-obfuscator/releases/latest 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\(.*\)".*/\1/')
   local _cb="https://github.com/ClusterM/wg-obfuscator/releases/download/${_tag}"
   declare -A _am=([aarch64]="linux-arm64" [mipsel]="linux-mipsel-mips32" [mips]="linux-mips-mips32" [armv7]="linux-armv7-hf" [x86_64]="linux-x64")
   for _arch in aarch64 mipsel mips armv7 x86_64; do
@@ -235,12 +235,16 @@ action_package() {
   local tpl_dir="$REPO_DIR/client/templates"
 
   if [[ -d "$tpl_dir" ]]; then
+     for required in install-router.sh.template lib-client.sh install-obfuscator.sh install-wireguard.sh; do
+       [[ -f "$tpl_dir/$required" ]] || die "Обязательный шаблон $required не найден в $tpl_dir. Выполни phobos-update stable и пересоздай пакет."
+     done
      cp "$tpl_dir/install-router.sh.template" "$pkg_root/install-router.sh"
      sed -i "s|{{CLIENT_NAME}}|${id}|g" "$pkg_root/install-router.sh"
      chmod +x "$pkg_root/install-router.sh"
-     [[ -f "$tpl_dir/lib-client.sh" ]] && cp "$tpl_dir/lib-client.sh" "$pkg_root/lib-client.sh"
-     [[ -f "$tpl_dir/install-obfuscator.sh" ]] && cp "$tpl_dir/install-obfuscator.sh" "$pkg_root/install-obfuscator.sh"
-     [[ -f "$tpl_dir/install-wireguard.sh" ]] && cp "$tpl_dir/install-wireguard.sh" "$pkg_root/install-wireguard.sh"
+     cp "$tpl_dir/lib-client.sh" "$pkg_root/lib-client.sh"
+     cp "$tpl_dir/install-obfuscator.sh" "$pkg_root/install-obfuscator.sh"
+     cp "$tpl_dir/install-wireguard.sh" "$pkg_root/install-wireguard.sh"
+     chmod +x "$pkg_root/lib-client.sh" "$pkg_root/install-obfuscator.sh" "$pkg_root/install-wireguard.sh"
      for f in router-configure-wireguard router-configure-wireguard-openwrt phobos-uninstall 3xui; do
        [[ -f "$tpl_dir/$f.sh" ]] && cp "$tpl_dir/$f.sh" "$pkg_root/$f.sh" && chmod +x "$pkg_root/$f.sh"
      done
