@@ -555,7 +555,7 @@ phobos-update stable
 
 ### Android PhobosWG: `Неправильная длина ключа в PublicKey`
 
-Причина: старый phobos payload мог добавлять `PresharedKey = none` или отдавать старый QR/ссылку после обновления панели. PhobosWG воспринимает это как битый ключ.
+Причина: старый phobos payload мог добавлять `PresharedKey = none`, отдавать старый QR/ссылку после обновления панели или терять финальный `=` в WireGuard `PublicKey`. PhobosWG воспринимает это как битый ключ.
 
 Решение:
 

@@ -707,7 +707,10 @@ def build_phone_config(cid, mode="android"):
             pass
         out = []
         for ln in wg.split("\n"):
-            out.append("Endpoint = %s:51820" % server_ip if ln.strip().startswith("Endpoint") else ln)
+            if ln.strip().startswith("Endpoint"):
+                out.append("Endpoint = %s:51820" % server_ip)
+            else:
+                out.append(_normalize_wg_key_line(ln))
         return "\n".join(out) + "\n", None
     inst = ""
     if os.path.exists(instpath):
@@ -746,6 +749,9 @@ def _prepare_phoboswg_payload(conf):
             key, value = ln.split("=", 1)
             k = key.strip().lower()
             v = value.strip()
+            if k in ("privatekey", "publickey", "presharedkey"):
+                ln = "%s = %s" % (key.strip(), _normalize_wg_key_value(v))
+                v = _normalize_wg_key_value(v)
             if k == "presharedkey" and v.lower() in ("", "none"):
                 continue
             if header.lower() == "[peer]" and k == "allowedips":
@@ -769,6 +775,29 @@ def _prepare_phoboswg_payload(conf):
         out.extend(lines)
         out.append("")
     return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _normalize_wg_key_line(line):
+    if "=" not in line:
+        return line
+    key, value = line.split("=", 1)
+    if key.strip().lower() not in ("privatekey", "publickey", "presharedkey"):
+        return line
+    return "%s = %s" % (key.strip(), _normalize_wg_key_value(value.strip()))
+
+
+def _normalize_wg_key_value(value):
+    """Restore dropped base64 padding for WireGuard 32-byte keys."""
+    value = (value or "").strip()
+    if not value or value.lower() == "none":
+        return value
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    if any(ch not in alphabet for ch in value):
+        return value
+    padded = value + ("=" * ((4 - len(value) % 4) % 4))
+    if len(padded) == 44:
+        return padded
+    return value
 
 
 def _pad_conf_with_none(conf):

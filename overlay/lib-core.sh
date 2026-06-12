@@ -25,7 +25,12 @@ check_root() {
 
 load_env() {
   if [ -f "$SERVER_ENV" ]; then
-    while IFS='=' read -r k v; do
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        ''|\#*) continue ;;
+      esac
+      k="${line%%=*}"
+      v="${line#*=}"
       case "$k" in
         ''|\#*) continue ;;
       esac
