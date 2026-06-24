@@ -45,38 +45,41 @@ action_add() {
   local server_pub="$SERVER_WG_PUBLIC_KEY"
   local server_ip_v4="${SERVER_PUBLIC_IP_V4:-}"
   local server_ip_v6="${SERVER_PUBLIC_IP_V6:-}"
+  local server_wg_network="${SERVER_WG_IPV4_NETWORK:-10.25.0.0/16}"
   
   local client_ip_v4="$manual_ip"
-  local ipv4_prefix_main=$(echo "${SERVER_WG_IPV4_NETWORK:-10.25.0.0/16}" | cut -d'/' -f1 | cut -d'.' -f1-2)
   local ipv6_prefix_main=$(echo "${SERVER_WG_IPV6_NETWORK:-fd00:10:25::/48}" | cut -d'/' -f1 | sed 's/::.*//')
 
   if [[ -z "$client_ip_v4" ]]; then
     log_info "Поиск свободного IP..."
-    declare -A used_ips
-
+    local used_ips=""
     for d in "$CLIENTS_DIR"/*; do
       if [[ -d "$d" ]] && [[ -f "$d/metadata.json" ]]; then
-        local ip=$(jq -r '.tunnel_ip_v4 // empty' "$d/metadata.json" 2>/dev/null)
-        [[ -n "$ip" ]] && used_ips["$ip"]=1
+        local ip=$(jq -r '.tunnel_ip_v4 // empty' "$d/metadata.json" 2>/dev/null | cut -d/ -f1)
+        [[ -n "$ip" ]] && used_ips="${used_ips}${ip}"$'\n'
       fi
     done
 
-    used_ips["${ipv4_prefix_main}.0.1"]=1
-    
-    local found=false
-    for oct3 in {0..255}; do
-      local start_oct4=2
-      for oct4 in $(seq $start_oct4 254); do
-         local candidate="${ipv4_prefix_main}.${oct3}.${oct4}"
-         if [[ -z "${used_ips[$candidate]:-}" ]]; then
-           client_ip_v4="$candidate"
-           found=true
-           break 2
-         fi
-      done
-    done
-    
-    [[ "$found" == "false" ]] && die "Нет свободных IP в подсети."
+    client_ip_v4="$(USED_IPS="$used_ips" python3 - "$server_wg_network" <<'PY'
+import ipaddress
+import os
+import sys
+
+net = ipaddress.ip_network(sys.argv[1], strict=False)
+used = {line.strip() for line in os.environ.get("USED_IPS", "").splitlines() if line.strip()}
+hosts = net.hosts()
+reserved_first = True
+for candidate in hosts:
+    ip = str(candidate)
+    if reserved_first:
+        reserved_first = False
+        continue
+    if ip not in used:
+        print(ip)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+)" || die "Нет свободных IP в подсети."
   fi
   
   local oct3=$(echo "$client_ip_v4" | cut -d. -f3)
